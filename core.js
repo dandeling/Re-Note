@@ -1,4 +1,4 @@
-/* Re;Note 아티팩트 판 — 공통 뼈대. 모듈은 이 파일이 만든 전역 `RN`만 쓴다. (계약: CONTRACT.md) */
+/* Re: Note 아티팩트 판 — 공통 뼈대. 모듈은 이 파일이 만든 전역 `RN`만 쓴다. (계약: CONTRACT.md) */
 (function () {
   "use strict";
 

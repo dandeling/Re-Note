@@ -21,6 +21,7 @@
   const BROKEN_REF = "[참조 대상 없음]";
   const DOC_LIMIT = 256 * 1024;
   const REPORT_LIMIT = 200 * 1024;
+  const MAX_AC_BEFORE = 1200; // 자동완성 프롬프트에 넣는 캐럿 앞 글자 수
   const DAY = 86400000;
   const TRASH_DAYS = 30;
   const MAX_SNAPSHOTS = 50;
@@ -1966,7 +1967,8 @@ ${HEADS.map((hl, i) => `.rn-paper .rn-h${i + 1} { font-family: var(--fmt-${hl}-f
 
   // ---------- 10-2. DOM ↔ 위치 ----------
   const isInlineAtom = (el) => el.nodeType === 1 && el.classList && (el.classList.contains("rn-im") || el.classList.contains("rn-xref"));
-  const isSkipEl = (el) => el.nodeType === 1 && el.classList && (el.classList.contains("rn-cap-label") || el.classList.contains("rn-fill"));
+  // rn-ghost: 자동완성 제안(mod-autocomplete.js). 문서 글자가 아니므로 위치 계산·DOM 읽기에서 건너뛴다.
+  const isSkipEl = (el) => el.nodeType === 1 && el.classList && (el.classList.contains("rn-cap-label") || el.classList.contains("rn-fill") || el.classList.contains("rn-ghost"));
   function measureNode(n) {
     if (n.nodeType === 3) return n.data.length;
     if (n.nodeType !== 1 && n.nodeType !== 11) return 0;
@@ -2451,6 +2453,7 @@ ${HEADS.map((hl, i) => `.rn-paper .rn-h${i + 1} { font-family: var(--fmt-${hl}-f
     let savedSel = null;   // 마지막 본문 선택(모델 위치) — 도구 모음·패널이 쓴다
     let pending = null;    // 접힌 커서에서 켠 굵게·기울임 { line, off, b, i }
     let composing = false;
+    let acReset = null;    // 자동완성 제안 지우기(모델→DOM 다시 그리기 직전에 부른다)
     let lastSnapshotJson = JSON.stringify(model);
     const draftKey = `draft:${RN.caps.uid}:${docId}`;
     const docRef = docCol().doc(docId);
@@ -2587,6 +2590,7 @@ ${HEADS.map((hl, i) => `.rn-paper .rn-h${i + 1} { font-family: var(--fmt-${hl}-f
     const blockKey = (b) => JSON.stringify(b) + (model.blocks.length === 1 ? "#solo" : "");
     /** 모델과 DOM 맞추기: 바뀐 블록만 다시 그리고 순서를 맞춘다. force면 전부 다시. */
     function syncDom(force) {
+      if (acReset) acReset();
       const existing = new Map();
       for (const el of blocksEl.children) if (el.dataset.id && !existing.has(el.dataset.id)) existing.set(el.dataset.id, el);
       const placed = new Set();
@@ -3981,6 +3985,60 @@ ${HEADS.map((hl, i) => `.rn-paper .rn-h${i + 1} { font-family: var(--fmt-${hl}-f
       applyFormat(input) { if (blocked) return null; return setRules(isObj(input) ? input : {}, "서식을 적용했어요."); },
     };
     RN.editor = api;
+
+    // ---------- 글쓰기 자동완성 연결 (mod-autocomplete.js) ----------
+    const AC_TYPES = ["paragraph", "quote", "item"]; // 제목·캡션·코드·표 칸·수식에서는 쓰지 않는다
+    const acLinePlain = (L) => (L.k === "atom" ? ({ table: "[표]", figure: "[그림]", math: "[수식]" }[L.type] || "") : inlPlain(L.content, numbering));
+    const acBridge = {
+      blocksEl, toolbar, blocked: !!blocked,
+      setResetHandler(fn) { acReset = typeof fn === "function" ? fn : null; },
+      /** 본문에 캐럿(접힌 선택)이 있으면 그 모델 위치, 아니면 null */
+      caretPoint() {
+        if (composing) return null;
+        const sel = window.getSelection();
+        if (!sel || !sel.rangeCount || !sel.isCollapsed) return null;
+        const r = sel.getRangeAt(0);
+        if (!blocksEl.contains(r.startContainer) || inSub(r.startContainer)) return null;
+        const s = rangeToSel(r);
+        return s && s.collapsed ? s.a : null;
+      },
+      /** 자동완성을 띄울 자리면 { key, point, slot, lineChars, before, title, section }, 아니면 null */
+      context() {
+        if (blocked || composing || popup || document.activeElement !== blocksEl) return null;
+        const p = acBridge.caretPoint();
+        if (!p) return null;
+        const lines = linesNow();
+        const L = lines[p.line];
+        if (!L || L.k !== "text" || !AC_TYPES.includes(L.type) || p.off !== lineLen(L)) return null;
+        const info = lineInfo(p.line);
+        const el = info && blkEl(info.b.id);
+        const slot = el && (info.b.type === "list" ? el.querySelector(`:scope > .rn-slot[data-item="${info.item}"]`) : el);
+        if (!slot) return null;
+        const lineText = inlPlain(L.content, numbering);
+        const parts = [lineText];
+        let total = lineText.length, section = "";
+        for (let i = p.line - 1; i >= 0; i--) {
+          const M = lines[i];
+          if (!section && M.k === "text" && M.type === "heading") section = inlPlain(M.content, numbering);
+          if (total < MAX_AC_BEFORE) { const t = acLinePlain(M); if (t) { parts.unshift(t); total += t.length + 1; } }
+          if (section && total >= MAX_AC_BEFORE) break;
+        }
+        const before = parts.join("\n").slice(-MAX_AC_BEFORE);
+        return { key: JSON.stringify([title, section, before]), point: p, slot, lineChars: lineText.replace(/\s/g, "").length, before, title, section };
+      },
+      /** 제안 글자를 캐럿 자리에 넣는다(편집 한 번 = 실행 취소 한 단계) */
+      accept(text, ctx) {
+        if (blocked || !text) return false;
+        const lines = linesEdit();
+        const p = linesInsertText(lines, clampPt(lines, ctx.point), String(text));
+        commit(lines, p, p, "struct");
+        return true;
+      },
+    };
+    if (RN.autocomplete && typeof RN.autocomplete.attach === "function") {
+      try { const c = RN.autocomplete.attach(acBridge); if (typeof c === "function") state.cleanups.push(c); }
+      catch (e) { console.error(e); }
+    }
     state.cleanups.push(() => {
       if (RN.editor === api) RN.editor = null;
       if (draftTimer) saveDraftNow();

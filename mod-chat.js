@@ -101,33 +101,47 @@
   }
 
   // ---------- 일일 한도 (개인 영역 aiUsage 문서, 한국 시간 날짜별) ----------
+  // 문서 모양: { day, count(챗봇·의미 검색), autocomplete(글쓰기 자동완성), updatedAt }. 두 카운터를 이 한 곳에서 읽고 쓴다
+  // (한 문서에 동시에 한 번만 쓰기 — set이 문서 전체를 덮으므로 다른 필드를 잃지 않게 항상 둘 다 쓴다).
+  const AUTOCOMPLETE_LIMIT_DEFAULT = 200;
   const today = () => new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
   const dailyLimit = () => (Number.isInteger(RN.aiDailyLimit) && RN.aiDailyLimit >= 0 ? RN.aiDailyLimit : DAILY_LIMIT_DEFAULT);
-  let usageCache = null; // { day, count }
+  const autocompleteLimit = () => (Number.isInteger(RN.aiAutocompleteLimit) && RN.aiAutocompleteLimit >= 0 ? RN.aiAutocompleteLimit : AUTOCOMPLETE_LIMIT_DEFAULT);
+  let usageCache = null; // { day, count, autocomplete }
+  let usageRead = null;
   let usageWrite = Promise.resolve();
+  const fromDoc = (d, day) => (d && d.day === day ? { day, count: Number(d.count) || 0, autocomplete: Number(d.autocomplete) || 0 } : { day, count: 0, autocomplete: 0 });
   async function readUsage() {
     const day = today();
     if (usageCache && usageCache.day === day) return usageCache;
-    const ref = RN.userDoc && RN.userDoc("aiUsage");
-    if (ref) {
-      try { const snap = await ref.get(); const d = snap.exists ? snap.data() : null; usageCache = d && d.day === day ? { day, count: Number(d.count) || 0 } : { day, count: 0 }; }
-      catch { usageCache = { day, count: 0 }; }
-    } else {
-      const d = RN.local.get("aiUsage", null);
-      usageCache = d && d.day === day ? { day, count: Number(d.count) || 0 } : { day, count: 0 };
-    }
-    return usageCache;
+    if (usageRead && usageRead.day === day) return usageRead.p; // 동시에 여러 번 읽지 않게
+    const p = (async () => {
+      const ref = RN.userDoc && RN.userDoc("aiUsage");
+      let u;
+      if (ref) {
+        try { const snap = await ref.get(); u = fromDoc(snap.exists ? snap.data() : null, day); }
+        catch { u = fromDoc(null, day); }
+      } else u = fromDoc(RN.local.get("aiUsage", null), day);
+      if (!usageCache || usageCache.day !== day) usageCache = u;
+      return usageCache;
+    })();
+    usageRead = { day, p };
+    try { return await p; } finally { if (usageRead && usageRead.p === p) usageRead = null; }
   }
-  /** 한도 안이면 1 올리고 true */
-  async function takeQuota() {
+  /** field("count"|"autocomplete")가 한도 안이면 1 올리고 true */
+  async function takeField(field, limit) {
     const u = await readUsage();
-    if (u.count >= dailyLimit()) return false;
-    u.count += 1;
-    const snapshot = { day: u.day, count: u.count, updatedAt: Date.now() };
+    if (u[field] >= limit) return false;
+    u[field] += 1;
+    const snapshot = { day: u.day, count: u.count, autocomplete: u.autocomplete, updatedAt: Date.now() };
     const ref = RN.userDoc && RN.userDoc("aiUsage");
     usageWrite = usageWrite.then(() => (ref ? ref.set(snapshot) : RN.local.set("aiUsage", snapshot))).catch(() => {});
     return true;
   }
+  /** 챗봇·의미 검색: 한도 안이면 1 올리고 true */
+  const takeQuota = () => takeField("count", dailyLimit());
+  /** 글쓰기 자동완성(하루 200회, 챗봇 한도와 따로) */
+  const takeAutocompleteQuota = () => takeField("autocomplete", autocompleteLimit());
 
   // ---------- 대화 저장 (개인 영역 chats) ----------
   const chatsColl = () => (RN.userColl ? RN.userColl("chats") : null);
@@ -663,6 +677,6 @@
 
   RN.ready.then(() => { if (document.body) setupFloating(); else document.addEventListener("DOMContentLoaded", setupFloating); });
   RN.chatUtil = { keywordsOf, extractFenced };
-  /** 일일 AI 한도(챗봇과 "의미로 더 찾기"가 함께 쓴다): take() → 한도 안이면 1 올리고 true */
-  RN.aiQuota = { take: takeQuota, read: readUsage, limit: dailyLimit };
+  /** 일일 AI 한도: take()(챗봇과 "의미로 더 찾기"가 함께 씀), takeAutocomplete()(글쓰기 자동완성, 따로 셈) → 한도 안이면 1 올리고 true */
+  RN.aiQuota = { take: takeQuota, read: readUsage, limit: dailyLimit, takeAutocomplete: takeAutocompleteQuota, autocompleteLimit };
 })();
