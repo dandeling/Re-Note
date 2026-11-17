@@ -1,8 +1,9 @@
 import { expect, test } from "@playwright/test";
 import { login, uniqueEmail } from "./helpers";
 
-// SPEC 13장 시나리오 4: 고충 작성 → 다른 계정으로 댓글·"나도 겪었어요" → 원 작성자가 해결됨 처리
-test("E2E-4 고충 작성 → 다른 계정 댓글·공감 → 원 작성자가 해결됨 처리", async ({ browser }) => {
+// SPEC 13장 시나리오 4: 고충 작성 → 다른 계정으로 "나도 겪었어요"(댓글 UI 없음 확인) → 원 작성자가 해결됨 처리
+// 사용자 요청으로 고충 댓글을 없앴다(docs/decisions.md pains-9).
+test("E2E-4 고충 작성 → 다른 계정 공감(댓글 없음) → 원 작성자가 해결됨 처리", async ({ browser }) => {
   const title = `설문 표본이 너무 적어요 ${Date.now()}`;
 
   // 1) 작성자가 고충을 올린다.
@@ -24,7 +25,7 @@ test("E2E-4 고충 작성 → 다른 계정 댓글·공감 → 원 작성자가 
   await expect(author.locator("article strong", { hasText: "12명" })).toBeVisible();
   await expect(author.getByText("해결 중")).toBeVisible();
 
-  // 2) 다른 계정이 목록에서 글을 찾아 댓글과 "나도 겪었어요"를 남긴다.
+  // 2) 다른 계정이 목록에서 글을 찾아 "나도 겪었어요"를 누른다. 댓글을 남길 곳은 없다.
   const otherCtx = await browser.newContext();
   const other = await otherCtx.newPage();
   await login(other, uniqueEmail("pain-other"));
@@ -34,11 +35,12 @@ test("E2E-4 고충 작성 → 다른 계정 댓글·공감 → 원 작성자가 
   // 남의 글에는 수정·삭제·해결 처리 도구가 없다.
   await expect(other.getByRole("button", { name: "해결됨으로 표시" })).toHaveCount(0);
   await expect(other.getByRole("button", { name: "삭제" })).toHaveCount(0);
+  await expect(other.getByText("내 글 관리")).toHaveCount(0);
 
-  await other.getByLabel("댓글 쓰기").fill("저도 같은 일을 겪었어요. 비모수 검정을 써 보세요.");
-  await other.getByRole("button", { name: "댓글 등록" }).click();
-  await expect(other.getByRole("heading", { name: "댓글 1" })).toBeVisible();
-  await expect(other.getByText("비모수 검정을 써 보세요")).toBeVisible();
+  // 댓글 목록·작성 폼이 없다.
+  await expect(other.getByLabel("댓글 쓰기")).toHaveCount(0);
+  await expect(other.getByRole("button", { name: "댓글 등록" })).toHaveCount(0);
+  await expect(other.getByRole("heading", { name: /^댓글/ })).toHaveCount(0);
 
   const meToo = other.getByRole("button", { name: /나도 겪었어요/ });
   await expect(meToo).toHaveAttribute("aria-pressed", "false");
@@ -51,11 +53,11 @@ test("E2E-4 고충 작성 → 다른 계정 댓글·공감 → 원 작성자가 
   expect(forbidden.status()).toBe(403);
   expect((await other.request.delete(`/api${painPath}`)).status()).toBe(403);
 
-  // 3) 원 작성자가 댓글·공감을 확인하고 해결됨으로 바꾼다.
+  // 3) 원 작성자가 공감 수를 확인하고, 접힌 "내 글 관리"를 펼쳐 해결됨으로 바꾼다.
   await author.reload();
-  await expect(author.getByText("비모수 검정을 써 보세요")).toBeVisible();
   await expect(author.getByTestId("me-too-count")).toHaveText("1");
-  await author.getByRole("textbox", { name: "해결 방법" }).fill("댓글 조언대로 **비모수 검정**(Mann-Whitney)을 썼어요.");
+  await author.getByText("내 글 관리").click();
+  await author.getByRole("textbox", { name: "해결 방법" }).fill("**비모수 검정**(Mann-Whitney)을 썼어요.");
   await author.getByRole("button", { name: "해결됨으로 표시" }).click();
 
   // 해결 방법이 본문보다 위에 강조 표시된다.
@@ -79,7 +81,7 @@ test("E2E-4 고충 작성 → 다른 계정 댓글·공감 → 원 작성자가 
   const guest = await guestCtx.newPage();
   await guest.goto(painPath);
   await expect(guest.getByTestId("pain-resolution")).toContainText("Mann-Whitney");
-  await expect(guest.getByText("비모수 검정을 써 보세요")).toBeVisible();
+  await expect(guest.getByLabel("댓글 쓰기")).toHaveCount(0);
 
   await authorCtx.close();
   await otherCtx.close();

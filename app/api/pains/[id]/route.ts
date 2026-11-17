@@ -6,11 +6,11 @@ import { getCurrentUser } from "@/server/session";
 
 type Ctx = RouteContext<"/api/pains/[id]">;
 
-/** 상세(+댓글)는 비로그인도 읽을 수 있다 (SPEC 7.1). */
+/** 상세는 비로그인도 읽을 수 있다 (SPEC 7.1). 댓글은 없다(docs/decisions.md pains-9). */
 export const GET = route<Ctx>(async (_req, ctx) => {
   const { id } = await ctx.params;
   const viewer = await getCurrentUser();
-  return json(await getPain(id, viewer?.id ?? null));
+  return json({ pain: await getPain(id, viewer?.id ?? null) });
 });
 
 /** 작성자만 수정할 수 있다. 남의 글은 403. 해결됨 처리도 여기서 한다. */

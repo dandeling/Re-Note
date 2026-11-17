@@ -138,6 +138,19 @@ export function isFakeAiMode() {
   return process.env.AI_FAKE === "1" && process.env.NODE_ENV !== "production";
 }
 
+let sdkCached: { key: string; sdk: Anthropic } | null = null;
+
+/**
+ * 모델을 호출하는 쪽이 정하는 SDK 클라이언트 (자동완성 lib/ai/autocomplete.ts가 쓴다).
+ * 키를 읽는 곳을 이 파일 하나로 유지한다. 키가 없으면 503 AI_UNAVAILABLE.
+ */
+export function getAnthropicSdk(): Anthropic {
+  const key = process.env.ANTHROPIC_API_KEY;
+  if (!key) throw new ApiError("AI_UNAVAILABLE", t.ai.errors.notConfigured);
+  if (!sdkCached || sdkCached.key !== key) sdkCached = { key, sdk: new Anthropic({ apiKey: key }) };
+  return sdkCached.sdk;
+}
+
 let cached: { key: string; model: string; client: AiClient } | null = null;
 
 /**

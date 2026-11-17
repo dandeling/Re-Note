@@ -12,7 +12,6 @@ export const PAIN_LIMITS = {
   field: 100,
   tag: 30,
   tags: 10,
-  comment: 5000,
   resolution: 5000,
   reason: 1000,
 };
@@ -78,7 +77,6 @@ export const listPainsQuerySchema = z.object({
   pageSize: z.preprocess(blankToUndefined, z.coerce.number().int().min(1).max(50).default(20)),
 });
 
-export const createCommentSchema = z.object({ body: z.string().trim().min(1).max(PAIN_LIMITS.comment) });
 export const createReportSchema = z.object({ reason: z.string().trim().max(PAIN_LIMITS.reason).default("") });
 
 export type CreatePainInput = z.infer<typeof createPainSchema>;

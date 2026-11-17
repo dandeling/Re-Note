@@ -1,3 +1,4 @@
+import { serverConversionEnabled } from "@/lib/features";
 import type { Asset, ConversionJob } from "@/lib/generated/prisma/client";
 import { messages } from "@/lib/messages";
 import { ApiError } from "@/server/api";
@@ -5,6 +6,16 @@ import { createAssetFromBytes } from "@/server/assets";
 import { createJob } from "@/server/jobs/jobs";
 import { clientIp, rateLimit, ruleFromEnv } from "@/server/rate-limit";
 import { readUploadedFile } from "@/server/upload-form";
+
+/**
+ * 서버 변환(워커)을 끈 배포(Vercel 등, lib/features.ts)에서는 501로 거절한다.
+ * 파일을 받거나 자산·작업을 만들기 전에 부른다.
+ */
+export function assertServerConversion(message: string = messages.convert.serverDisabled) {
+  if (!serverConversionEnabled()) {
+    throw new ApiError("NOT_IMPLEMENTED", message, { reason: "SERVER_CONVERSION_DISABLED" });
+  }
+}
 
 /** 변환·가져오기 요청 한도: IP(로그인 시 사용자)당 시간당 20회 */
 export const CONVERT_RATE_RULE = { limit: 20, windowMs: 60 * 60_000 };
@@ -24,6 +35,7 @@ export async function optionalUser() {
  * 로그인 사용자의 작업은 그 사용자만, 익명 작업은 작업 ID를 아는 사람만 조회할 수 있다.
  */
 export async function startConversion(req: Request, userId: string | null) {
+  assertServerConversion();
   const { filename, bytes } = await readUploadedFile(req);
   const lower = filename.toLowerCase();
   if (!lower.endsWith(".hwp") && !lower.endsWith(".hwpx")) throw new ApiError("UNSUPPORTED_FILE", messages.convert.onlyHwp);

@@ -1,7 +1,8 @@
+import { existsSync } from "node:fs";
+import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GET as listGET, POST } from "@/app/api/pains/route";
 import { DELETE, GET, PATCH } from "@/app/api/pains/[id]/route";
-import { POST as commentPOST } from "@/app/api/pains/[id]/comments/route";
 import { POST as reactionPOST } from "@/app/api/pains/[id]/reactions/route";
 import { POST as reportPOST } from "@/app/api/pains/[id]/reports/route";
 import { prisma } from "@/lib/db";
@@ -32,8 +33,6 @@ async function patch(id: string, body: unknown) {
   return { res, data: await res.json() };
 }
 const remove = (id: string) => DELETE(jsonRequest("DELETE", `/api/pains/${id}`), ctx({ id }));
-const comment = (id: string, body: unknown) =>
-  commentPOST(jsonRequest("POST", `/api/pains/${id}/comments`, body), ctx({ id }));
 const react = (id: string) => reactionPOST(jsonRequest("POST", `/api/pains/${id}/reactions`), ctx({ id }));
 const report = (id: string, body: unknown = {}) =>
   reportPOST(jsonRequest("POST", `/api/pains/${id}/reports`, body), ctx({ id }));
@@ -81,8 +80,8 @@ describe("P5-1 고충 작성·수정·삭제", () => {
       isMine: true,
       author: { name: "김작성" },
       meTooCount: 0,
-      commentCount: 0,
     });
+    expect(data.pain).not.toHaveProperty("commentCount");
   });
 
   it("기본값: 단계는 기타, 실명", async () => {
@@ -158,11 +157,12 @@ describe("P5-1 고충 작성·수정·삭제", () => {
     expect(row).toMatchObject({ title: "표본이 너무 적어요", resolved: false });
   });
 
-  it("작성자가 삭제하면 댓글·공감·신고도 함께 사라진다", async () => {
+  it("작성자가 삭제하면 공감·신고(와 예전에 달린 댓글)도 함께 사라진다", async () => {
     const { data } = await createPain();
     const id = data.pain.id as string;
+    // 댓글 기능은 없지만 예전 데이터가 DB에 남아 있을 수 있다(스키마 유지, decisions pains-9).
+    await prisma.comment.create({ data: { painPostId: id, authorId: other.id, body: "예전 댓글" } });
     loginAs(other);
-    await comment(id, { body: "저도요" });
     await react(id);
     await report(id);
     loginAs(author);
@@ -210,7 +210,7 @@ describe("P5-2 비로그인 목록·상세 읽기, 정렬·필터·검색", () =
     const d = await detail(a.id);
     expect(d.res.status).toBe(200);
     expect(d.data.pain).toMatchObject({ title: "주제를 못 정하겠어요", body: "관심사가 너무 넓어요", isMine: false });
-    expect(d.data.comments).toEqual([]);
+    expect(d.data).not.toHaveProperty("comments");
     expect((await detail("nope")).res.status).toBe(404);
   });
 
@@ -288,44 +288,33 @@ describe("P5-2 비로그인 목록·상세 읽기, 정렬·필터·검색", () =
   });
 });
 
-describe("P5-4 댓글 · 나도 겪었어요 · 신고", () => {
+describe("P5-4 나도 겪었어요 · 신고 (댓글 없음)", () => {
   let id: string;
   beforeEach(async () => {
     id = (await createPain()).data.pain.id;
   });
 
-  it("비로그인은 댓글·공감·신고를 할 수 없다 (401)", async () => {
+  it("비로그인은 공감·신고를 할 수 없다 (401)", async () => {
     loginAs(null);
-    expect((await comment(id, { body: "x" })).status).toBe(401);
     expect((await react(id)).status).toBe(401);
     expect((await report(id)).status).toBe(401);
   });
 
   it("없는 글에는 404", async () => {
-    expect((await comment("nope", { body: "x" })).status).toBe(404);
     expect((await react("nope")).status).toBe(404);
     expect((await report("nope")).status).toBe(404);
   });
 
-  it("댓글을 달면 상세에 작성 순서대로 보인다", async () => {
-    loginAs(other);
-    const res = await comment(id, { body: "  저도 같은 문제를 겪었어요 " });
-    expect(res.status).toBe(201);
-    expect((await res.json()).comment).toMatchObject({
-      body: "저도 같은 문제를 겪었어요",
-      author: { name: "이방문" },
-      isPostAuthor: false,
-      isMine: true,
-    });
-    expect((await comment(id, { body: "   " })).status).toBe(400);
-    loginAs(author);
-    await comment(id, { body: "답변 감사합니다" });
-
+  it("댓글 API가 없고, 예전에 달린 댓글은 상세·목록 응답에 나오지 않는다", async () => {
+    // 사용자 요청으로 댓글 기능을 없앴다: 라우트 파일 자체가 없어야 한다(Next는 없는 경로에 404).
+    expect(existsSync(path.join(process.cwd(), "app/api/pains/[id]/comments/route.ts"))).toBe(false);
+    await prisma.comment.create({ data: { painPostId: id, authorId: other.id, body: "예전에 남긴 댓글" } });
     loginAs(null);
-    const { data } = await detail(id);
-    expect(data.pain.commentCount).toBe(2);
-    expect(data.comments.map((c: { body: string }) => c.body)).toEqual(["저도 같은 문제를 겪었어요", "답변 감사합니다"]);
-    expect(data.comments[1]).toMatchObject({ isPostAuthor: true, isMine: false, author: { name: "김작성" } });
+    const d = await detail(id);
+    expect(d.res.status).toBe(200);
+    expect(Object.keys(d.data)).toEqual(["pain"]);
+    expect(JSON.stringify(d.data)).not.toMatch(/예전에 남긴 댓글|comment/i);
+    expect(JSON.stringify((await list()).data)).not.toMatch(/예전에 남긴 댓글|comment/i);
   });
 
   it("나도 겪었어요는 토글이고 사용자당 하나만 저장된다", async () => {
@@ -364,10 +353,8 @@ describe("P5-4 댓글 · 나도 겪었어요 · 신고", () => {
     expect(JSON.stringify(data)).not.toMatch(/report|광고|신고/i);
   });
 
-  it("댓글·공감·신고에 rate limit이 걸려 있다", async () => {
+  it("공감·신고에 rate limit이 걸려 있다", async () => {
     loginAs(other);
-    for (let i = 0; i < PAIN_RATE_LIMITS.comment.limit; i++) expect((await comment(id, { body: `댓글 ${i}` })).status).toBe(201);
-    expect((await comment(id, { body: "초과" })).status).toBe(429);
     for (let i = 0; i < PAIN_RATE_LIMITS.reaction.limit; i++) expect((await react(id)).status).toBe(200);
     expect((await react(id)).status).toBe(429);
     for (let i = 0; i < PAIN_RATE_LIMITS.report.limit; i++) expect((await report(id)).status).toBe(201);

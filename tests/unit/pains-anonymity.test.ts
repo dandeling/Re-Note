@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GET as listGET, POST } from "@/app/api/pains/route";
 import { GET, PATCH } from "@/app/api/pains/[id]/route";
-import { POST as commentPOST } from "@/app/api/pains/[id]/comments/route";
 import { POST as reactionPOST } from "@/app/api/pains/[id]/reactions/route";
 import { POST as reportPOST } from "@/app/api/pains/[id]/reports/route";
 import { prisma } from "@/lib/db";
@@ -32,18 +31,16 @@ function walk(value: unknown, path = "$", out: { path: string; key: string; valu
 type Identity = { id: string; email: string; name: string; image: string };
 
 /** 응답 JSON 어디에도 작성자 정보가 없음을 검사한다. */
-function expectNoAuthorInfo(json: unknown, who: Identity, opts: { allowAuthorObjects?: boolean } = {}) {
+function expectNoAuthorInfo(json: unknown, who: Identity) {
   const text = JSON.stringify(json);
   for (const secret of [who.id, who.email, who.name, who.image]) expect(text).not.toContain(secret);
   for (const entry of walk(json)) {
     const key = entry.key.toLowerCase();
-    // author 키는 익명 글·익명 글쓴이의 댓글에서는 반드시 null이어야 한다.
+    // author 키는 익명 글에서는 반드시 null이어야 한다.
     if (key === "author") {
-      if (!opts.allowAuthorObjects) expect(entry.value, entry.path).toBeNull();
+      expect(entry.value, entry.path).toBeNull();
       continue;
     }
-    // 다른 사람(실명 댓글 작성자)의 author 객체 안에 있는 name·image는 허용한다.
-    if (opts.allowAuthorObjects && /\.author\.(name|image)$/.test(entry.path)) continue;
     expect(FORBIDDEN_KEYS.has(key), `금지된 키 ${entry.path}`).toBe(false);
   }
 }
@@ -55,13 +52,13 @@ const identity = (tag: string) => ({
 });
 
 let author: Identity;
-let commenter: Identity;
+let other: Identity;
 
 beforeEach(async () => {
   await resetDb();
   await resetRateLimits();
   author = await prisma.user.create({ data: identity("author") }) as Identity;
-  commenter = await prisma.user.create({ data: identity("commenter") }) as Identity;
+  other = await prisma.user.create({ data: identity("other") }) as Identity;
 });
 
 async function createAnonymous() {
@@ -83,7 +80,7 @@ describe("P5-3 익명 글 작성자 비노출", () => {
 
   it("목록·상세 응답: 비로그인·다른 사용자·작성자 본인 모두에게 작성자 정보가 없다", async () => {
     const { pain } = await createAnonymous();
-    for (const viewer of [null, commenter, author]) {
+    for (const viewer of [null, other, author]) {
       loginAs(viewer);
       for (const query of ["", "?sort=popular", `?q=${encodeURIComponent("익명")}`, `?tag=${encodeURIComponent("비밀")}`]) {
         const list = await (await listGET(jsonRequest("GET", `/api/pains${query}`), {})).json();
@@ -99,31 +96,24 @@ describe("P5-3 익명 글 작성자 비노출", () => {
     }
   });
 
-  it("댓글 포함 응답: 익명 글쓴이가 자기 글에 단 댓글에도 작성자 정보가 없다", async () => {
+  it("예전에 달린 댓글이 DB에 남아 있어도 상세 응답에는 댓글도 작성자 정보도 없다", async () => {
+    // 댓글 기능은 없앴지만 Comment 테이블은 남겼다(decisions pains-9). 익명 글쓴이가 예전에 단 댓글로 신원이 새지 않아야 한다.
     const { pain } = await createAnonymous();
     const id = pain.id;
+    await prisma.comment.createMany({
+      data: [
+        { painPostId: id, authorId: other.id, body: "저도요" },
+        { painPostId: id, authorId: author.id, body: "글쓴이입니다" },
+      ],
+    });
 
-    loginAs(commenter);
-    const c1 = await (await commentPOST(jsonRequest("POST", `/api/pains/${id}/comments`, { body: "저도요" }), ctx({ id }))).json();
-    expectNoAuthorInfo(c1, author, { allowAuthorObjects: true });
-    expect(c1.comment.author).toEqual({ name: commenter.name, image: commenter.image });
-
-    loginAs(author);
-    const c2 = await (await commentPOST(jsonRequest("POST", `/api/pains/${id}/comments`, { body: "글쓴이입니다" }), ctx({ id }))).json();
-    expectNoAuthorInfo(c2, author);
-    expect(c2.comment).toMatchObject({ author: null, isPostAuthor: true, isMine: true });
-
-    for (const viewer of [null, commenter, author]) {
+    for (const viewer of [null, other, author]) {
       loginAs(viewer);
       const detail = await (await GET(jsonRequest("GET", `/api/pains/${id}`), ctx({ id }))).json();
-      expect(detail.comments).toHaveLength(2);
-      expectNoAuthorInfo(detail, author, { allowAuthorObjects: true });
-      expect(detail.pain.author).toBeNull();
-      expect(detail.comments[1]).toMatchObject({ author: null, isPostAuthor: true, isMine: viewer === author });
-      // 댓글 작성자의 이메일·id는 실명이어도 나가지 않는다.
-      const text = JSON.stringify(detail);
-      expect(text).not.toContain(commenter.email);
-      expect(text).not.toContain(commenter.id);
+      expect(detail).not.toHaveProperty("comments");
+      expectNoAuthorInfo(detail, author);
+      expectNoAuthorInfo(detail, other);
+      expect(JSON.stringify(detail)).not.toContain("글쓴이입니다");
     }
   });
 
@@ -137,13 +127,13 @@ describe("P5-3 익명 글 작성자 비노출", () => {
     ).json();
     expectNoAuthorInfo(resolved, author);
 
-    loginAs(commenter);
+    loginAs(other);
     const reaction = await (await reactionPOST(jsonRequest("POST", `/api/pains/${id}/reactions`), ctx({ id }))).json();
     expectNoAuthorInfo(reaction, author);
-    expectNoAuthorInfo(reaction, commenter);
+    expectNoAuthorInfo(reaction, other);
     const report = await (await reportPOST(jsonRequest("POST", `/api/pains/${id}/reports`, { reason: "사유" }), ctx({ id }))).json();
     expectNoAuthorInfo(report, author);
-    expectNoAuthorInfo(report, commenter);
+    expectNoAuthorInfo(report, other);
     // 남이 수정하려다 받는 403 응답에도 없다.
     const forbidden = await PATCH(jsonRequest("PATCH", `/api/pains/${id}`, { title: "x" }), ctx({ id }));
     expect(forbidden.status).toBe(403);
@@ -154,7 +144,7 @@ describe("P5-3 익명 글 작성자 비노출", () => {
     await createAnonymous();
     const project = await prisma.project.create({ data: { ownerId: author.id, title: "p" } });
     await prisma.painPost.updateMany({ data: { projectId: project.id } });
-    for (const viewerId of [null, commenter.id]) {
+    for (const viewerId of [null, other.id]) {
       const result = await listPains({ viewerId });
       expectNoAuthorInfo(result, author);
       // 프로젝트 연결도 남에게는 보이지 않는다(실명 글과 묶여 신원이 드러나는 것 방지).

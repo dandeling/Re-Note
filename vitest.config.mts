@@ -10,7 +10,7 @@ export default defineConfig({
     },
   },
   test: {
-    exclude: ["**/node_modules/**", ".claude/**"],
+    exclude: ["**/node_modules/**", ".claude/**", "re-note/**", "artifact/**"],
     include: ["tests/unit/**/*.test.ts", "tests/unit/**/*.test.tsx"],
     environment: "node",
     globalSetup: ["tests/setup/global.ts"],

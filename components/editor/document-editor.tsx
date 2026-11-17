@@ -4,6 +4,7 @@ import Placeholder from "@tiptap/extension-placeholder";
 import { EditorContent, useEditor } from "@tiptap/react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { useAutocomplete } from "@/components/editor/autocomplete-toggle";
 import { editorExtensions } from "@/components/editor/editor-extensions";
 import { ReportPanels, ReportTools } from "@/components/editor/report-tools";
 import { DataTools } from "@/components/data/data-tools";
@@ -26,6 +27,8 @@ import { messages } from "@/lib/messages";
 type Props = {
   projectId: string;
   doc: { id: string; title: string; contentJson: DocContent; version: number; updatedAt: string };
+  /** 서버에서 PDF 내보내기를 할 수 있는가 (lib/features.ts, 페이지가 내려준다) */
+  pdfExportEnabled: boolean;
 };
 
 const DRAFT_WRITE_MS = 300;
@@ -50,15 +53,22 @@ function statusText(status: AutosaveStatus) {
   }
 }
 
-export function DocumentEditor({ projectId, doc }: Props) {
+export function DocumentEditor({ projectId, doc, pdfExportEnabled }: Props) {
   const t = messages.docs;
   const [title, setTitle] = useState(doc.title);
   const titleRef = useRef(doc.title);
   const [resolving, setResolving] = useState(false);
   const format = useDocumentFormat(doc.id); // 서식 규칙 (CSS 변수로 본문에 적용)
+  // 글쓰기 자동완성 (흐린 제안, 문서 내용에는 들어가지 않음)
+  const autocomplete = useAutocomplete({ documentId: doc.id, getTitle: () => titleRef.current });
 
   const editor = useEditor({
-    extensions: [...editorExtensions(), Placeholder.configure({ placeholder: t.placeholder }), KeyboardExit],
+    extensions: [
+      ...editorExtensions(),
+      Placeholder.configure({ placeholder: t.placeholder }),
+      KeyboardExit,
+      autocomplete.extension,
+    ],
     content: doc.contentJson,
     immediatelyRender: false,
     editorProps: { attributes: { "aria-label": t.editorLabel, role: "textbox", "aria-multiline": "true" } },
@@ -311,6 +321,7 @@ export function DocumentEditor({ projectId, doc }: Props) {
           {editor ? (
             <EditorToolbar editor={editor}>
               <ReportTools editor={editor} />
+              {autocomplete.renderToggle(editor)}
             </EditorToolbar>
           ) : null}
           {editor ? <ReportPanels editor={editor} /> : null}
@@ -322,6 +333,7 @@ export function DocumentEditor({ projectId, doc }: Props) {
           docId={doc.id}
           flush={async () => controllerRef.current?.flush()}
           chat={<EditorChat editor={editor} documentId={doc.id} />}
+          pdfExportEnabled={pdfExportEnabled}
         />
       </div>
     </div>

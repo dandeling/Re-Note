@@ -23,9 +23,11 @@ type Props = {
   flush: () => Promise<unknown>;
   /** AI 도우미 패널 (SPEC 5장: 에디터에서는 챗봇을 우측 패널로 고정) */
   chat?: ReactNode;
+  /** 서버에서 PDF 내보내기를 할 수 있는가 (lib/features.ts, 서버 컴포넌트가 내려준다) */
+  pdfExportEnabled: boolean;
 };
 
-export function FormatSidebar({ format, editor, docId, flush, chat }: Props) {
+export function FormatSidebar({ format, editor, docId, flush, chat, pdfExportEnabled }: Props) {
   const tabs: { id: FormatTab; label: string }[] = [
     ...(chat ? [{ id: "chat" as const, label: messages.chat.title }] : []),
     { id: "format", label: messages.format.tab },
@@ -84,7 +86,7 @@ export function FormatSidebar({ format, editor, docId, flush, chat }: Props) {
             </div>
           ) : null}
           {tab === "check" ? <FormatCheckPanel format={format} editor={editor} /> : null}
-          {tab === "export" ? <ExportPanel format={format} docId={docId} flush={flush} /> : null}
+          {tab === "export" ? <ExportPanel format={format} docId={docId} flush={flush} pdfEnabled={pdfExportEnabled} /> : null}
         </section>
       ) : null}
     </aside>

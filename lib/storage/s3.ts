@@ -25,7 +25,10 @@ function isNotFound(err: unknown) {
   return e?.name === "NoSuchKey" || e?.name === "NotFound" || e?.$metadata?.httpStatusCode === 404;
 }
 
-/** S3 호환 드라이버 (운영: S3, 로컬 compose: MinIO). endpoint가 있으면 MinIO용 path-style 주소를 쓴다. */
+/**
+ * S3 호환 드라이버 (운영: S3·Supabase Storage, 로컬 compose: MinIO).
+ * endpoint가 있으면 path-style 주소를 쓴다 (MinIO, Supabase `https://<ref>.supabase.co/storage/v1/s3`).
+ */
 export class S3Storage implements Storage {
   readonly driver = "s3" as const;
   private readonly client: S3Client;
@@ -42,6 +45,11 @@ export class S3Storage implements Storage {
         region: config.region,
         forcePathStyle: Boolean(endpoint),
         credentials: { accessKeyId: config.accessKeyId, secretAccessKey: config.secretAccessKey },
+        // SDK 기본값(WHEN_SUPPORTED)은 모든 PUT에 CRC32 체크섬을 붙인다. presigned PUT URL에는 빈 본문의 체크섬
+        // (x-amz-checksum-crc32=AAAAAA==)이 박혀 브라우저가 올린 실제 파일과 맞지 않고, Supabase Storage 같은
+        // S3 호환 서버는 이 헤더·aws-chunked 전송을 지원하지 않을 수 있다. 꼭 필요할 때만 쓴다.
+        requestChecksumCalculation: "WHEN_REQUIRED",
+        responseChecksumValidation: "WHEN_REQUIRED",
       });
     this.client = clients?.client ?? make(config.endpoint);
     this.presignClient = clients?.presignClient ?? make(config.publicEndpoint ?? config.endpoint);

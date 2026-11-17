@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { DocumentEditor } from "@/components/editor/document-editor";
 import { prisma } from "@/lib/db";
 import type { DocContent } from "@/lib/editor/content";
+import { pdfExportEnabled } from "@/lib/features";
 import { requireUser } from "@/server/require-user";
 
 export default async function DocumentPage({ params }: PageProps<"/projects/[id]/docs/[docId]">) {
@@ -24,6 +25,7 @@ export default async function DocumentPage({ params }: PageProps<"/projects/[id]
           version: doc.version,
           updatedAt: doc.updatedAt.toISOString(),
         }}
+        pdfExportEnabled={pdfExportEnabled()}
       />
     </main>
   );

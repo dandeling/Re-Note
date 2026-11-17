@@ -14,47 +14,36 @@ export function painAuthorName(author: { name: string | null } | null) {
 /**
  * 고충 목록. `/pains`, 프로젝트 홈의 "내 고충", 연구 상세의 "연결된 고충"이 같이 쓴다.
  * `listPains()`의 결과(`pains`)를 그대로 넘기면 된다.
+ *
+ * 카드는 제목 · 요약 · 메타 한 줄만 보여 준다. 배지는 "해결됨" 하나뿐이고(단순화 원칙: 카드당 최대 2개),
+ * 단계·분야·작성자·날짜·공감 수·태그는 메타 줄의 글자로 보여 준다(태그 링크는 상세 화면에 있다).
  */
 export function PainList({ items, headingLevel = 2 }: { items: PainListItem[]; headingLevel?: 2 | 3 }) {
   const t = messages.pains;
   const Heading = headingLevel === 2 ? "h2" : "h3";
   return (
-    <ul className="divide-y rounded-lg border">
+    <ul className="divide-y">
       {items.map((pain) => (
-        <li key={pain.id} className="flex flex-col gap-2 px-4 py-4">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <Badge variant={pain.resolved ? "success" : "outline"}>
-              {pain.resolved ? t.resolvedBadge : t.unresolvedBadge}
-            </Badge>
-            <Badge variant="secondary">{t.stages[pain.stage]}</Badge>
-            {pain.field ? <Badge variant="secondary">{pain.field}</Badge> : null}
-            {pain.isMine ? <Badge variant="outline">{t.mineBadge}</Badge> : null}
-          </div>
-          <Heading className="text-base font-semibold leading-snug">
+        <li key={pain.id} className="flex flex-col gap-1.5 py-4">
+          <Heading className="flex flex-wrap items-center gap-2 text-base font-semibold leading-snug">
             <Link href={`/pains/${pain.id}`} className="rounded hover:underline focus-visible:outline-2">
               {pain.title}
             </Link>
+            {pain.resolved ? <Badge variant="success">{t.resolvedBadge}</Badge> : null}
           </Heading>
           {pain.excerpt ? <p className="line-clamp-2 text-sm text-muted-foreground">{pain.excerpt}</p> : null}
-          {pain.tags.length > 0 ? (
-            <ul className="flex flex-wrap gap-1.5" aria-label={t.filters.tag}>
-              {pain.tags.map((tag) => (
-                <li key={tag}>
-                  <Link
-                    href={`/pains?tag=${encodeURIComponent(tag)}`}
-                    className="text-xs text-primary hover:underline"
-                  >
-                    #{tag}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-          <p className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-            <span>{painAuthorName(pain.author)}</span>
-            <time dateTime={pain.createdAt.toISOString()}>{dateFormat.format(pain.createdAt)}</time>
-            <span>{t.meTooCount.replace("{n}", String(pain.meTooCount))}</span>
-            <span>{t.commentCount.replace("{n}", String(pain.commentCount))}</span>
+          <p className="text-xs text-muted-foreground">
+            {[
+              t.stages[pain.stage],
+              pain.field || null,
+              painAuthorName(pain.author),
+              dateFormat.format(pain.createdAt),
+              t.meTooCount.replace("{n}", String(pain.meTooCount)),
+              pain.tags.length > 0 ? pain.tags.map((tag) => `#${tag}`).join(" ") : null,
+              pain.isMine ? t.mineBadge : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
           </p>
         </li>
       ))}

@@ -138,3 +138,19 @@ export class FakeAiClient implements AiClient {
     }
   }
 }
+
+/**
+ * 자동완성용 가짜 응답 (AI_FAKE=1). 커서 앞 텍스트에 따라 정해진 제안을 낸다.
+ * - "자동완성 없음"이 들어 있으면 → 빈 제안
+ * - 문장이 끝났으면(마침표 등) → 다음 한 문장
+ * - 그 외 → 쓰던 문장을 마무리
+ */
+export const FAKE_AUTOCOMPLETE = {
+  nextSentence: "이 결과는 추가 실험으로 확인할 필요가 있다.",
+  finishSentence: " 추가 실험으로 확인할 필요가 있다.",
+} as const;
+
+export function fakeAutocomplete(before: string): string {
+  if (before.includes("자동완성 없음")) return "";
+  return /[.!?。]\s*$/.test(before) ? FAKE_AUTOCOMPLETE.nextSentence : FAKE_AUTOCOMPLETE.finishSentence;
+}

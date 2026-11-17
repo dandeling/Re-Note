@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { CommentForm } from "@/components/pains/comment-form";
 import { Markdown } from "@/components/pains/markdown";
 import { OwnerActions } from "@/components/pains/owner-actions";
 import { painAuthorName } from "@/components/pains/pain-list";
@@ -17,20 +16,21 @@ const dateFormat = new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeS
 export async function generateMetadata({ params }: PageProps<"/pains/[id]">): Promise<Metadata> {
   const { id } = await params;
   const found = await findPain(id, null);
-  return { title: found?.pain.title ?? messages.common.notFoundTitle };
+  return { title: found?.title ?? messages.common.notFoundTitle };
 }
 
 /**
- * 고충 상세 + 댓글 + "나도 겪었어요". 비로그인도 볼 수 있다 (SPEC 7.1).
+ * 고충 상세 + "나도 겪었어요". 비로그인도 볼 수 있다 (SPEC 7.1).
+ * 고충은 한 번에 쓰는 글이라 댓글 구역이 없다(docs/decisions.md pains-9). 주 동작은 "나도 겪었어요" 하나이고,
+ * 신고와 작성자 도구(해결됨 표시·수정·삭제)는 그 옆에 접혀 있다.
  * 화면에 쓰는 데이터는 server/pains.ts의 뷰 타입뿐이라 익명 글의 작성자 정보는 HTML에 들어가지 않는다.
  */
 export default async function PainDetailPage({ params }: PageProps<"/pains/[id]">) {
   const t = messages.pains;
   const { id } = await params;
   const viewer = await getCurrentUser();
-  const found = await findPain(id, viewer?.id ?? null);
-  if (!found) notFound();
-  const { pain, comments } = found;
+  const pain = await findPain(id, viewer?.id ?? null);
+  if (!pain) notFound();
   const loginHref = `/login?callbackUrl=${encodeURIComponent(`/pains/${pain.id}`)}`;
 
   return (
@@ -42,20 +42,26 @@ export default async function PainDetailPage({ params }: PageProps<"/pains/[id]"
       </p>
       <article className="flex flex-col gap-5">
         <header className="flex flex-col gap-2">
-          <div className="flex flex-wrap items-center gap-1.5">
+          <div>
             <Badge variant={pain.resolved ? "success" : "outline"}>
               {pain.resolved ? t.resolvedBadge : t.unresolvedBadge}
             </Badge>
-            <Badge variant="secondary">{t.stages[pain.stage]}</Badge>
-            {pain.field ? <Badge variant="secondary">{pain.field}</Badge> : null}
-            {pain.isMine ? <Badge variant="outline">{t.mineBadge}</Badge> : null}
           </div>
           <h1 className="text-2xl font-bold leading-snug">{pain.title}</h1>
-          <p className="flex flex-wrap gap-x-3 text-sm text-muted-foreground">
+          <p className="flex flex-wrap gap-x-1.5 text-sm text-muted-foreground">
             <span data-testid="pain-author">{painAuthorName(pain.author)}</span>
+            <span aria-hidden="true">·</span>
             <time dateTime={pain.createdAt.toISOString()}>
               {t.detail.postedAt.replace("{date}", dateFormat.format(pain.createdAt))}
             </time>
+            <span aria-hidden="true">·</span>
+            <span>{[t.stages[pain.stage], pain.field || null].filter(Boolean).join(" · ")}</span>
+            {pain.isMine ? (
+              <>
+                <span aria-hidden="true">·</span>
+                <span>{t.mineBadge}</span>
+              </>
+            ) : null}
           </p>
         </header>
 
@@ -103,7 +109,7 @@ export default async function PainDetailPage({ params }: PageProps<"/pains/[id]"
           </p>
         ) : null}
 
-        <div className="flex flex-wrap items-start justify-between gap-3 border-t pt-4">
+        <div className="flex flex-wrap items-start gap-3 border-t pt-4">
           {viewer ? (
             <ReactionButton painId={pain.id} count={pain.meTooCount} reacted={pain.reactedByMe} />
           ) : (
@@ -119,47 +125,14 @@ export default async function PainDetailPage({ params }: PageProps<"/pains/[id]"
       </article>
 
       {pain.isMine ? (
-        <section aria-labelledby="pain-owner-heading" className="rounded-lg border p-4">
-          <h2 id="pain-owner-heading" className="mb-3 text-lg font-semibold">
-            {t.detail.ownerHeading}
-          </h2>
-          <OwnerActions painId={pain.id} resolved={pain.resolved} resolution={pain.resolution} />
-        </section>
+        // 작성자 도구는 접어 둔다. 펼치면 해결됨 표시(해결 방법)·수정·삭제가 나온다.
+        <details className="rounded-lg bg-muted/60 px-4 py-3" data-testid="pain-owner-tools">
+          <summary className="cursor-pointer text-sm font-medium">{t.detail.ownerHeading}</summary>
+          <div className="mt-3">
+            <OwnerActions painId={pain.id} resolved={pain.resolved} resolution={pain.resolution} />
+          </div>
+        </details>
       ) : null}
-
-      <section aria-labelledby="pain-comments-heading" className="flex flex-col gap-4">
-        <h2 id="pain-comments-heading" className="text-lg font-semibold">
-          {t.comments.heading.replace("{n}", String(comments.length))}
-        </h2>
-        {comments.length === 0 ? (
-          <p className="text-muted-foreground">{t.comments.empty}</p>
-        ) : (
-          <ol className="divide-y rounded-lg border">
-            {comments.map((comment) => (
-              <li key={comment.id} className="flex flex-col gap-1.5 px-4 py-3">
-                <p className="flex flex-wrap items-center gap-x-2 text-sm">
-                  <span className="font-medium">{painAuthorName(comment.author)}</span>
-                  {comment.isPostAuthor ? <Badge variant="secondary">{t.postAuthorBadge}</Badge> : null}
-                  <time dateTime={comment.createdAt.toISOString()} className="text-xs text-muted-foreground">
-                    {dateFormat.format(comment.createdAt)}
-                  </time>
-                </p>
-                <Markdown source={comment.body} className="text-sm" />
-              </li>
-            ))}
-          </ol>
-        )}
-        {viewer ? (
-          <CommentForm painId={pain.id} />
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            {t.comments.loginRequired}{" "}
-            <Link href={loginHref} className="text-primary underline">
-              {t.comments.login}
-            </Link>
-          </p>
-        )}
-      </section>
     </main>
   );
 }

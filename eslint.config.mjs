@@ -15,6 +15,8 @@ const eslintConfig = defineConfig([
     "lib/generated/**",
     ".claude/**",
     "worker/spike/**",
+    "re-note/**",
+    "artifact/**",
   ]),
 ]);
 

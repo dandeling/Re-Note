@@ -58,9 +58,25 @@
     async search() { return []; },
   };
   // 가짜 AI: window.__mockSample 를 테스트가 바꿔 끼울 수 있다. 기본은 입력을 되풀이한다.
+  // 글쓰기 자동완성 프롬프트(<before_cursor>)에는 그럴듯한 한 문장을 돌려준다(window.__mockAutocompleteDelay ms 뒤, signal을 따른다).
+  function mockCompletion(text) {
+    const a = text.lastIndexOf("<before_cursor>"), b = text.lastIndexOf("</before_cursor>");
+    const before = a >= 0 && b > a ? text.slice(a + 15, b) : "";
+    if (/[.!?]\s*$/.test(before)) return " 이를 통해 실험 조건이 결과에 미치는 영향을 확인할 수 있었다.";
+    if (/\s$/.test(before)) return "측정값의 변화 경향을 비교하여 분석하였다.";
+    return " 측정값의 변화 경향을 비교하여 분석하였다.";
+  }
   async function sample(input, opts = {}) {
     const text = typeof input === "string" ? input : input[input.length - 1].content;
     const fn = window.__mockSample;
+    if (!fn && text.includes("<before_cursor>")) {
+      window.__mockAutocompleteCalls = (window.__mockAutocompleteCalls || 0) + 1;
+      await new Promise((r) => setTimeout(r, window.__mockAutocompleteDelay || 50));
+      if (opts.signal && opts.signal.aborted) throw { code: "cancelled", message: "aborted" };
+      const out = mockCompletion(text);
+      if (opts.onText) opts.onText({ text: out, delta: out });
+      return { text: out, truncated: false, modelTierApplied: opts.modelTier || "default" };
+    }
     const out = fn ? await fn(text, opts, input) : "가짜 AI 응답: " + text.slice(0, 60);
     if (opts.onText) opts.onText({ text: out, delta: out });
     return { text: out, truncated: false };

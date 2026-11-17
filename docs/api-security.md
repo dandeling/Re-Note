@@ -47,7 +47,6 @@
 | `POST /api/pains` | 필요 | 연결 프로젝트·연구 본인 것만 | 본문 | 20회/10분 |
 | `GET /api/pains/:id` | — | 익명 비노출 | — | — |
 | `PATCH/DELETE /api/pains/:id` | 필요 | 작성자만(403) | 본문 | 20회/10분 |
-| `POST /api/pains/:id/comments` | 필요 | — | 본문 | 30회/10분 |
 | `POST /api/pains/:id/reactions` | 필요 | — | — | 60회/10분 |
 | `POST /api/pains/:id/reports` | 필요 | — | 본문 | 10회/시간 |
 | `POST /api/chat` (SSE) | 필요 | 문서·프로젝트 404 | 본문 | ai + 하루 한도 |
@@ -62,7 +61,7 @@
 
 | 출력 경로 | 처리 | 테스트 |
 |---|---|---|
-| 고충 본문·댓글·해결 방법 (마크다운) | `lib/markdown.ts` `renderMarkdown`: markdown-it `html:false` + sanitize-html 허용 목록, 이미지 미렌더링, http/https/mailto 링크만 | `tests/unit/sanitize.test.ts`, `markdown.test.ts`, E2E `pains.spec.ts` |
+| 고충 본문·해결 방법 (마크다운) | `lib/markdown.ts` `renderMarkdown`: markdown-it `html:false` + sanitize-html 허용 목록, 이미지 미렌더링, http/https/mailto 링크만 | `tests/unit/sanitize.test.ts`, `markdown.test.ts`, E2E `pains.spec.ts` |
 | 내보내기 HTML (PDF 원본) | `lib/export/html.ts`: 정적 렌더 후 sanitize-html, 수식은 sanitize 뒤 KaTeX(trust 꺼짐) MathML, 인쇄 페이지는 JS 끔·외부 요청 차단 | `sanitize.test.ts`, `export.test.ts` |
 | 가져오기 결과 | **병합 대기** (`app/api/import`, `worker/`가 이 브랜치에 없음) | — |
 | 챗봇 답변·제안 | `components/chat/*`가 React 텍스트로만 그림(HTML 주입 없음) | `sanitize.test.ts` 정적 검사 |

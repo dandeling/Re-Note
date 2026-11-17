@@ -15,6 +15,7 @@ export type ErrorCode =
   | "PAYLOAD_TOO_LARGE"
   | "UNSUPPORTED_FILE"
   | "AI_UNAVAILABLE"
+  | "NOT_IMPLEMENTED"
   | "INTERNAL_ERROR";
 
 const STATUS: Record<ErrorCode, number> = {
@@ -27,6 +28,8 @@ const STATUS: Record<ErrorCode, number> = {
   PAYLOAD_TOO_LARGE: 413,
   UNSUPPORTED_FILE: 415,
   AI_UNAVAILABLE: 503,
+  /** 이 배포에서 끈 기능 (예: Vercel에서의 서버 HWP 변환·PDF 내보내기, lib/features.ts) */
+  NOT_IMPLEMENTED: 501,
   INTERNAL_ERROR: 500,
 };
 

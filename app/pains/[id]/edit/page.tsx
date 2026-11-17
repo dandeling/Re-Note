@@ -10,9 +10,8 @@ export const metadata = { title: messages.pains.editTitle };
 export default async function EditPainPage({ params }: PageProps<"/pains/[id]/edit">) {
   const { id } = await params;
   const user = await requireUser(`/pains/${id}/edit`);
-  const found = await findPain(id, user.id);
-  if (!found || !found.pain.isMine) notFound();
-  const { pain } = found;
+  const pain = await findPain(id, user.id);
+  if (!pain || !pain.isMine) notFound();
   const { projects, researches } = await listLinkTargets(user.id);
 
   return (

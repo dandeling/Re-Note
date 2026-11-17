@@ -9,7 +9,9 @@ import { FONT_IDS, FONTS, type FontId } from "@/lib/format/fonts";
  * 번들에 넣으면 빌드가 크게 느려지고, 브라우저는 필요한 조각만 내려받는다.
  */
 const WEIGHTS = [400, 700] as const;
-const root = () => path.join(process.cwd(), "node_modules", "@fontsource");
+// 번들 추적(Vercel 함수에 넣을 파일)은 이 동적 경로로 @fontsource 전체(수만 개, 170MB 남짓)를 끌어들이므로 끄고,
+// 실제로 쓰는 400·700 굵기의 CSS·woff2만 next.config.ts의 outputFileTracingIncludes로 넣는다.
+const root = () => path.join(/* turbopackIgnore: true */ process.cwd(), "node_modules", "@fontsource");
 const PACKAGES = new Set<string>(FONT_IDS.map((id) => FONTS[id].pkg));
 const FILE_PATTERN = /^[a-z0-9-]+\.(woff2|woff)$/;
 
@@ -17,7 +19,7 @@ const cssCache = new Map<string, Promise<string>>();
 
 async function loadCss(font: FontId): Promise<string> {
   const pkg = FONTS[font].pkg;
-  const parts = await Promise.all(WEIGHTS.map((w) => readFile(path.join(root(), pkg, `${w}.css`), "utf8")));
+  const parts = await Promise.all(WEIGHTS.map((w) => readFile(path.join(/* turbopackIgnore: true */ root(), pkg, `${w}.css`), "utf8")));
   // url(./files/<file>) → url(<base>/<pkg>/<file>). <base>는 fontFaceCss에서 채운다.
   return parts.join("\n").replace(/url\(\.\/files\/([^)]+)\)/g, `url(__BASE__/${pkg}/$1)`);
 }
@@ -42,7 +44,7 @@ export async function fontFaceCss(fonts: readonly FontId[], urlBase: string): Pr
 export async function readFontFile(pkg: string, file: string): Promise<{ data: Buffer; contentType: string } | null> {
   if (!PACKAGES.has(pkg) || !FILE_PATTERN.test(file)) return null;
   try {
-    const data = await readFile(path.join(root(), pkg, "files", file));
+    const data = await readFile(path.join(/* turbopackIgnore: true */ root(), pkg, "files", file));
     return { data, contentType: file.endsWith(".woff2") ? "font/woff2" : "font/woff" };
   } catch {
     return null;

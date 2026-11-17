@@ -70,13 +70,13 @@ test("$...$ / $$...$$ 입력 즉시 KaTeX로 그려지고, 블록 수식은 번�
   await page.keyboard.press("Escape");
   await expect(panel).toHaveCount(0);
 
-  // 툴바 버튼: 인라인 수식을 넣고 LaTeX를 입력한다.
+  // 툴바 버튼: 인라인 수식을 넣으면 쉬운 입력으로 열린다. "alpha"는 \alpha가 된다.
   await page.keyboard.press("ControlOrMeta+End");
   await page.keyboard.press("Enter");
   await page.keyboard.type("상수 ");
   await page.getByRole("button", { name: /인라인 수식 넣기/ }).click();
-  await expect(input).toBeFocused();
-  await page.keyboard.type("\\alpha");
+  await expect(page.getByRole("textbox", { name: "수식 (쉬운 입력)" })).toBeFocused();
+  await page.keyboard.type("alpha");
   await page.keyboard.press("Enter");
   await expect(inline).toHaveCount(2);
   await expect(inline.nth(1)).toHaveAttribute("data-latex", "\\alpha");

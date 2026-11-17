@@ -7,7 +7,7 @@ import { findCaptionTarget } from "@/lib/editor/nodes/caption";
 import { messages } from "@/lib/messages";
 import { CrossRefPicker } from "./cross-ref-picker";
 import { MathAiPanel, setMathAiOpen, useMathAiOpen } from "./math-ai-panel";
-import { MathPanel } from "./math-panel";
+import { MathPanel, requestEasyMath } from "./math-panel";
 import "katex/dist/katex.min.css";
 import "./report-nodes.css";
 
@@ -32,9 +32,10 @@ export function ReportTools({ editor }: { editor: Editor }) {
     { key: "crossRef", label: c.insertCrossRef, icon: AtSign, run: startCrossRef },
     { key: "figureList", label: c.insertFigureList, icon: Images, run: (e) => e.chain().focus().insertCaptionList("figure").run() },
     { key: "tableList", label: c.insertTableList, icon: Sheet, run: (e) => e.chain().focus().insertCaptionList("table").run() },
-    // 수식은 넣자마자 LaTeX 입력란으로 초점이 가야 하므로 에디터에 초점을 돌려주지 않는다.
-    { key: "mathInline", label: m.insertInline, icon: Sigma, run: (e) => e.chain().insertMathInline("", { select: true }).run() },
-    { key: "mathBlock", label: m.insertBlock, icon: SquareSigma, run: (e) => e.chain().insertMathBlock("", { select: true }).run() },
+    // 수식은 넣자마자 입력란으로 초점이 가야 하므로 에디터에 초점을 돌려주지 않는다.
+    // 툴바로 넣는 새 수식은 쉬운 입력(또는 마지막에 고른 방식)으로 연다.
+    { key: "mathInline", label: m.insertInline, icon: Sigma, run: (e) => (requestEasyMath(e), e.chain().insertMathInline("", { select: true }).run()) },
+    { key: "mathBlock", label: m.insertBlock, icon: SquareSigma, run: (e) => (requestEasyMath(e), e.chain().insertMathBlock("", { select: true }).run()) },
     { key: "mathAi", label: m.ai.open, icon: WandSparkles, run: (e) => setMathAiOpen(e, !mathAiOpen) },
   ];
 

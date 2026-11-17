@@ -6,7 +6,7 @@ import { messages } from "@/lib/messages";
 import { getOwnedDocument, getOwnedProject } from "@/server/access";
 import { ApiError, notFound } from "@/server/api";
 import { createAssetFromBytes } from "@/server/assets";
-import { CONVERT_RATE_RULE } from "@/server/convert";
+import { assertServerConversion, CONVERT_RATE_RULE } from "@/server/convert";
 import type { ImportResult } from "@/server/jobs/import";
 import { createJob, getViewableJob } from "@/server/jobs/jobs";
 import { rateLimit, ruleFromEnv } from "@/server/rate-limit";
@@ -32,8 +32,10 @@ const importFieldsSchema = z.object({
 /**
  * 가져오기 요청 (multipart: file, projectId, documentId?, title?). 로그인 필수, 프로젝트·문서 소유자만.
  * 원본 파일은 프로젝트 자산으로 저장되고(원본 미리보기·첨부), 처리는 변환 워커가 한다.
+ * 서버 변환을 끈 배포(Vercel)에서는 형식과 관계없이 501이다 — 처리할 워커가 없다.
  */
 export async function startImport(req: Request, userId: string) {
+  assertServerConversion(messages.importer.serverDisabled);
   await rateLimit(`import:${userId}`, ruleFromEnv("RATE_LIMIT_CONVERT_PER_HOUR", CONVERT_RATE_RULE));
   const { filename, bytes, form } = await readUploadedFile(req);
   const fields = importFieldsSchema.parse({

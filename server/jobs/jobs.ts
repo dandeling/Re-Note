@@ -1,7 +1,8 @@
 import { randomBytes } from "node:crypto";
 import { prisma } from "@/lib/db";
 import type { ConversionJob, ConversionType, Prisma } from "@/lib/generated/prisma/client";
-import { notFound } from "@/server/api";
+import { messages } from "@/lib/messages";
+import { ApiError, notFound } from "@/server/api";
 import { failStaleJobs } from "@/server/jobs/process";
 import { enqueueJob } from "@/server/jobs/queue";
 
@@ -26,7 +27,17 @@ export async function createJob(input: {
       params: (input.params ?? undefined) as Prisma.InputJsonValue | undefined,
     },
   });
-  if (input.enqueue !== false) await enqueueJob(job.id);
+  if (input.enqueue !== false) {
+    try {
+      await enqueueJob(job.id);
+    } catch (err) {
+      // 큐에 못 넣은 작업이 QUEUED로 남지 않게 한다 (예: 서버 변환을 끈 배포, Redis 장애).
+      await prisma.conversionJob
+        .updateMany({ where: { id: job.id, status: "QUEUED" }, data: { status: "FAILED", error: err instanceof ApiError ? err.message : messages.errors.INTERNAL_ERROR } })
+        .catch(() => undefined);
+      throw err;
+    }
+  }
   return job;
 }
 

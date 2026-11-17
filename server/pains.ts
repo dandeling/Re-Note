@@ -9,11 +9,13 @@ import { ApiError, notFound } from "@/server/api";
  * 고충 게시판 서버 로직 (SPEC 7.1). 페이지와 API가 같이 쓴다.
  *
  * 익명 글 보호 (SPEC 9장 "익명 글 작성자 비노출"):
- * - DB 행을 그대로 내보내지 않는다. 밖으로 나가는 값은 전부 `toPainView`/`toCommentView`가 필드를 하나씩 골라 만든다.
+ * - DB 행을 그대로 내보내지 않는다. 밖으로 나가는 값은 전부 `toSummary`가 필드를 하나씩 골라 만든다.
  * - `authorId`·이메일은 어떤 글에서도 내보내지 않는다. 익명 글은 `author`가 null이다.
- * - 익명 글의 작성자가 자기 글에 단 댓글도 `author`가 null이다(글쓴이 표시만 남긴다).
  * - `projectId`는 본인에게만 내려준다(같은 프로젝트에 연결된 실명 글과 묶여 신원이 드러나는 것을 막는다).
  * - 익명 글은 공개 연구(`Research`, 작성자 공개)에 연결할 수 없다.
+ *
+ * 댓글 없음 (docs/decisions.md pains-9): 고충은 한 번에 쓰는 글이다. 다른 사람은 "나도 겪었어요"와 신고만 할 수 있다.
+ * DB의 `Comment` 테이블은 남아 있지만(예전 데이터 보존) 여기서는 읽지도 쓰지도 않는다.
  */
 
 export type PublicAuthor = { name: string | null; image: string | null };
@@ -36,7 +38,6 @@ export type PainSummary = {
   /** 본인 글일 때만 포함 */
   projectId?: string | null;
   meTooCount: number;
-  commentCount: number;
   /** 보는 사람이 "나도 겪었어요"를 눌렀는지 */
   reactedByMe: boolean;
 };
@@ -44,22 +45,12 @@ export type PainSummary = {
 export type PainListItem = PainSummary & { excerpt: string };
 export type PainDetail = PainSummary & { body: string; resolution: string | null };
 
-export type CommentView = {
-  id: string;
-  body: string;
-  createdAt: Date;
-  /** 익명 글의 글쓴이가 단 댓글이면 null */
-  author: PublicAuthor | null;
-  isPostAuthor: boolean;
-  isMine: boolean;
-};
-
 const authorSelect = { select: { name: true, image: true } } as const;
 
 function painInclude(viewerId: string | null) {
   return {
     author: authorSelect,
-    _count: { select: { comments: true, reactions: true } },
+    _count: { select: { reactions: true } },
     // 보는 사람 자신의 반응만 가져온다.
     reactions: { where: { userId: viewerId ?? "" }, select: { id: true }, take: viewerId ? 1 : 0 },
   } satisfies Prisma.PainPostInclude;
@@ -88,7 +79,6 @@ function toSummary(row: PainRow, viewerId: string | null): PainSummary {
     isMine,
     ...(isMine ? { projectId: row.projectId } : {}),
     meTooCount: row._count.reactions,
-    commentCount: row._count.comments,
     reactedByMe: row.reactions.length > 0,
   };
 }
@@ -99,24 +89,6 @@ function toListItem(row: PainRow, viewerId: string | null): PainListItem {
 
 function toDetail(row: PainRow, viewerId: string | null): PainDetail {
   return { ...toSummary(row, viewerId), body: row.body, resolution: row.resolved ? row.resolution : null };
-}
-
-type CommentRow = Prisma.CommentGetPayload<{ include: { author: typeof authorSelect } }>;
-
-function toCommentView(
-  row: CommentRow,
-  post: { authorId: string; isAnonymous: boolean },
-  viewerId: string | null,
-): CommentView {
-  const isPostAuthor = row.authorId === post.authorId;
-  return {
-    id: row.id,
-    body: row.body,
-    createdAt: row.createdAt,
-    author: isPostAuthor && post.isAnonymous ? null : publicAuthor(row.author),
-    isPostAuthor,
-    isMine: viewerId !== null && row.authorId === viewerId,
-  };
 }
 
 /** 부분 일치 검색(ILIKE, trigram 인덱스 사용). 사용자가 넣은 %, _ 는 와일드카드가 아니라 글자로 취급한다. */
@@ -203,30 +175,20 @@ export async function listPainFields(limit = 30): Promise<string[]> {
   return rows.map((r) => r.field);
 }
 
-const MAX_COMMENTS = 500;
-
-/** 고충 상세 + 댓글. 없으면 null. */
-export async function findPain(
-  id: string,
-  viewerId: string | null,
-): Promise<{ pain: PainDetail; comments: CommentView[] } | null> {
+/** 고충 상세. 없으면 null. */
+export async function findPain(id: string, viewerId: string | null): Promise<PainDetail | null> {
   const row = await prisma.painPost.findUnique({ where: { id }, include: painInclude(viewerId) });
-  if (!row) return null;
-  const comments = await prisma.comment.findMany({
-    where: { painPostId: id },
-    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-    take: MAX_COMMENTS,
-    include: { author: authorSelect },
-  });
-  return {
-    pain: toDetail(row, viewerId),
-    comments: comments.map((c) => toCommentView(c, row, viewerId)),
-  };
+  return row ? toDetail(row, viewerId) : null;
 }
 
 /** API용: 없으면 404 */
-export async function getPain(id: string, viewerId: string | null) {
+export async function getPain(id: string, viewerId: string | null): Promise<PainDetail> {
   return (await findPain(id, viewerId)) ?? notFound();
+}
+
+/** 홈 화면의 "고충 N건" */
+export async function countPains(): Promise<number> {
+  return prisma.painPost.count();
 }
 
 function invalid(message: string): never {
@@ -323,17 +285,8 @@ export async function deletePain(userId: string, id: string) {
 }
 
 async function getPostForInteraction(id: string) {
-  const post = await prisma.painPost.findUnique({ where: { id }, select: { id: true, authorId: true, isAnonymous: true } });
+  const post = await prisma.painPost.findUnique({ where: { id }, select: { id: true } });
   return post ?? notFound();
-}
-
-export async function addComment(userId: string, painPostId: string, body: string): Promise<CommentView> {
-  const post = await getPostForInteraction(painPostId);
-  const row = await prisma.comment.create({
-    data: { painPostId, authorId: userId, body },
-    include: { author: authorSelect },
-  });
-  return toCommentView(row, post, userId);
 }
 
 function isUniqueViolation(err: unknown) {
@@ -390,7 +343,6 @@ export async function listLinkTargets(userId: string) {
 
 export const PAIN_RATE_LIMITS = {
   write: { limit: 20, windowMs: 10 * 60_000 },
-  comment: { limit: 30, windowMs: 10 * 60_000 },
   reaction: { limit: 60, windowMs: 10 * 60_000 },
   report: { limit: 10, windowMs: 60 * 60_000 },
 } as const;

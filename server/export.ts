@@ -1,22 +1,36 @@
-import { chromium } from "playwright";
 import type { DocContent } from "@/lib/editor/content";
 import { documentToDocx } from "@/lib/export/docx";
 import { exportHtmlDocument } from "@/lib/export/html";
 import { documentToMarkdown } from "@/lib/export/markdown";
+import { pdfExportEnabled } from "@/lib/features";
 import { usedFonts } from "@/lib/format/css";
 import type { FormatRules } from "@/lib/format/rules";
+import { messages } from "@/lib/messages";
 import type { ExportFormat } from "@/lib/validation/format";
+import { ApiError } from "@/server/api";
 import { fontFaceCss, readFontFile } from "@/server/format-fonts";
 
 /**
  * 문서 내보내기 (SPEC 7.5, P2-7). PDF는 Playwright(Chromium) 인쇄, DOCX는 docx, Markdown은 직접 직렬화.
+ *
+ * Playwright는 PDF를 만들 때만 불러온다(동적 import). Chromium이 없는 서버리스(Vercel)에서는
+ * `pdfExportEnabled()`가 false라 PDF 요청을 501로 거절하고, 다른 형식은 Playwright 없이 동작한다.
  */
 
 /** PDF용 글꼴 주소. 실제로 네트워크로 나가지 않고 page.route가 디스크의 글꼴 파일로 응답한다. */
 const FONT_ORIGIN = "https://fonts.export.invalid";
 const PDF_TIMEOUT_MS = 60_000;
 
+/** PDF 내보내기를 끈 배포에서는 501 (NOT_IMPLEMENTED) */
+export function assertPdfExport() {
+  if (!pdfExportEnabled()) {
+    throw new ApiError("NOT_IMPLEMENTED", messages.exporter.pdfDisabled, { reason: "PDF_EXPORT_DISABLED" });
+  }
+}
+
 export async function documentToPdf(doc: DocContent, rules: FormatRules, title: string): Promise<Buffer> {
+  assertPdfExport();
+  const { chromium } = await import("playwright");
   const fontCss = await fontFaceCss(usedFonts(rules), FONT_ORIGIN);
   const html = exportHtmlDocument({ doc, rules, title, fontCss });
   const browser = await chromium.launch();

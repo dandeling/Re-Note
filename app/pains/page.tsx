@@ -40,7 +40,8 @@ export default async function PainsPage({ searchParams }: PageProps<"/pains">) {
     listPains({ ...query, viewerId: viewer?.id ?? null }),
     listPainFields(),
   ]);
-  const filtered = Boolean(query.q || query.stage || query.field || query.tag);
+  const filterCount = [query.stage, query.field, query.tag].filter(Boolean).length;
+  const filtered = Boolean(query.q || filterCount);
 
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6 px-4 py-10">
@@ -54,67 +55,85 @@ export default async function PainsPage({ searchParams }: PageProps<"/pains">) {
         </Button>
       </header>
 
-      <form method="get" action="/pains" role="search" aria-label={t.filters.heading} className="flex flex-col gap-3 rounded-lg border p-4">
-        <div className="grid gap-3 sm:grid-cols-[1fr_10rem]">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="pain-q">{t.filters.q}</Label>
-            <Input id="pain-q" name="q" type="search" maxLength={200} placeholder={t.filters.qPlaceholder} defaultValue={query.q ?? ""} />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="pain-sort">{t.filters.sort}</Label>
-            <NativeSelect id="pain-sort" name="sort" defaultValue={query.sort}>
-              {PAIN_SORTS.map((sort) => (
-                <option key={sort} value={sort}>
-                  {sort === "latest" ? t.filters.sortLatest : t.filters.sortPopular}
-                </option>
-              ))}
-            </NativeSelect>
-          </div>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="pain-filter-stage">{t.filters.stage}</Label>
-            <NativeSelect id="pain-filter-stage" name="stage" defaultValue={query.stage ?? ""}>
-              <option value="">{t.filters.stageAll}</option>
-              {PAIN_STAGES.map((stage) => (
-                <option key={stage} value={stage}>
-                  {t.stages[stage]}
-                </option>
-              ))}
-            </NativeSelect>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="pain-filter-field">{t.filters.field}</Label>
-            <Input
-              id="pain-filter-field"
-              name="field"
-              list="pain-field-options"
-              maxLength={100}
-              placeholder={t.filters.fieldPlaceholder}
-              defaultValue={query.field ?? ""}
-            />
-            <datalist id="pain-field-options">
-              {fields.map((field) => (
-                <option key={field} value={field} />
-              ))}
-            </datalist>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="pain-filter-tag">{t.filters.tag}</Label>
-            <Input id="pain-filter-tag" name="tag" maxLength={30} placeholder={t.filters.tagPlaceholder} defaultValue={query.tag ?? ""} />
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <Button type="submit">{t.filters.apply}</Button>
-          <Button asChild variant="outline">
-            <Link href="/pains">{t.filters.reset}</Link>
+      {/* 검색어·정렬만 먼저 보이고, 단계·분야·태그 필터는 "필터"를 눌러야 펼쳐진다(적용 중이면 펼친 채로). */}
+      <form method="get" action="/pains" role="search" aria-label={t.filters.heading} className="flex flex-col gap-3">
+        <div className="flex flex-wrap gap-2">
+          <Label htmlFor="pain-q" className="sr-only">
+            {t.filters.q}
+          </Label>
+          <Input
+            id="pain-q"
+            name="q"
+            type="search"
+            maxLength={200}
+            placeholder={t.filters.qPlaceholder}
+            defaultValue={query.q ?? ""}
+            className="min-w-48 flex-1"
+          />
+          <Label htmlFor="pain-sort" className="sr-only">
+            {t.filters.sort}
+          </Label>
+          <NativeSelect id="pain-sort" name="sort" defaultValue={query.sort} className="w-auto">
+            {PAIN_SORTS.map((sort) => (
+              <option key={sort} value={sort}>
+                {sort === "latest" ? t.filters.sortLatest : t.filters.sortPopular}
+              </option>
+            ))}
+          </NativeSelect>
+          <Button type="submit" variant="outline">
+            {t.filters.search}
           </Button>
         </div>
+        <details open={filterCount > 0} className="group text-sm">
+          <summary className="w-fit cursor-pointer rounded px-1 py-1 text-muted-foreground hover:text-foreground">
+            {filterCount > 0 ? t.filters.toggleCount.replace("{n}", String(filterCount)) : t.filters.toggle}
+          </summary>
+          <div className="mt-2 grid gap-3 sm:grid-cols-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="pain-filter-stage">{t.filters.stage}</Label>
+              <NativeSelect id="pain-filter-stage" name="stage" defaultValue={query.stage ?? ""}>
+                <option value="">{t.filters.stageAll}</option>
+                {PAIN_STAGES.map((stage) => (
+                  <option key={stage} value={stage}>
+                    {t.stages[stage]}
+                  </option>
+                ))}
+              </NativeSelect>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="pain-filter-field">{t.filters.field}</Label>
+              <Input
+                id="pain-filter-field"
+                name="field"
+                list="pain-field-options"
+                maxLength={100}
+                placeholder={t.filters.fieldPlaceholder}
+                defaultValue={query.field ?? ""}
+              />
+              <datalist id="pain-field-options">
+                {fields.map((field) => (
+                  <option key={field} value={field} />
+                ))}
+              </datalist>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="pain-filter-tag">{t.filters.tag}</Label>
+              <Input id="pain-filter-tag" name="tag" maxLength={30} placeholder={t.filters.tagPlaceholder} defaultValue={query.tag ?? ""} />
+            </div>
+          </div>
+          {filterCount > 0 ? (
+            <p className="mt-2">
+              <Link href={query.q ? `/pains?q=${encodeURIComponent(query.q)}` : "/pains"} className="text-primary hover:underline">
+                {t.filters.reset}
+              </Link>
+            </p>
+          ) : null}
+        </details>
       </form>
 
-      <section aria-labelledby="pain-list-heading" className="flex flex-col gap-3">
+      <section aria-labelledby="pain-list-heading" className="flex flex-col gap-1">
         <div className="flex items-baseline gap-2">
-          <h2 id="pain-list-heading" className="text-lg font-semibold">
+          <h2 id="pain-list-heading" className="sr-only">
             {t.listHeading}
           </h2>
           <span className="text-sm text-muted-foreground" aria-live="polite">

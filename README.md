@@ -10,7 +10,7 @@
 
 | 영역 | 화면 | 내용 |
 |---|---|---|
-| 고충 게시판 | `/pains` | 마크다운 본문, 연구 단계·분야·태그, 익명 글, 댓글, "나도 겪었어요", 해결됨 + 해결 방법, 신고 플래그 |
+| 고충 게시판 | `/pains` | 마크다운 본문, 연구 단계·분야·태그, 익명 글, "나도 겪었어요"(댓글 없음), 해결됨 + 해결 방법, 신고 플래그 |
 | 연구 탐색·추천 | `/`, `/explore`, `/research/[id]` | **사이트 내부 데이터만** 검색(pg_trgm + 한글 자모 정규화로 오타·띄어쓰기 허용, 선택적으로 pgvector 임베딩). 결과가 없으면 없다고 표시. 연구 상세에서 요약·한계·연결된 고충·결과보고서 PDF 뷰어 |
 | 연구 공개 | `/projects/[id]/publish` | 프로젝트에서 요약·키워드·한계를 입력하고 확인 모달을 거쳐 공개 |
 | 프로젝트 | `/projects`, `/projects/[id]` | 문서·데이터셋·첨부·고충 메모·챗봇 대화를 묶음. 보관, 30일 휴지통 |
@@ -23,7 +23,10 @@
 | 내보내기 | 에디터 "내보내기" | PDF(서식 반영, Chromium 인쇄), DOCX, Markdown |
 | HWP → PDF 변환 | `/tools/convert` | 로그인 없이 HWP/HWPX를 PDF로 변환·미리보기·내려받기 |
 | AI 챗봇 | 모든 화면의 플로팅 버튼 | 스트리밍 응답, 사이트 내부 검색 결과에 출처 링크, 수식·서식·그래프 제안. 문서 반영은 사용자가 직접 눌러야 함 |
+| 글쓰기 자동완성 | 에디터 툴바 "자동완성" | 쓰다 멈추면 이어질 말을 흐린 글씨로 제안, `Tab`으로 받아들이기·`Esc`로 닫기·`Ctrl+Space`로 바로 요청 |
 | 설정 | `/settings` | 이름 변경, 계정 삭제(데이터 삭제) |
+
+**글쓰기 자동완성.** 보고서 에디터에서 문단 끝에 커서를 두고 약 1.2초 멈추면(문단에 10자 이상, 선택 영역 없음), 앞 내용과 같은 어조로 이어질 말을 한 문장 이내로 흐리게 보여 줍니다. `Tab`을 눌러야 문서에 들어가며, 그 전까지는 화면에만 그려지므로 자동 저장·스냅샷·내보내기에 섞이지 않습니다. 계속 입력하거나 `Esc`를 누르면 사라지고, `Ctrl+Space`(mac도 Ctrl)로 바로 요청할 수 있습니다. 한글 조합 중, 표·코드 블록 안, 제목·캡션에서는 동작하지 않습니다. 툴바의 "자동완성" 버튼으로 끄고 켤 수 있고 설정은 브라우저에 기억됩니다. 서버(`POST /api/ai/autocomplete`)는 커서 앞 약 1,500자와 절 제목·문서 제목만 보내고, 모델에는 수치·출처를 지어내지 말라고 지시합니다. 자동완성은 호출이 잦아 챗봇과 별도로 분당·하루 한도를 둡니다(`RATE_LIMIT_AUTOCOMPLETE_PER_MINUTE`, `AI_AUTOCOMPLETE_DAILY_LIMIT`).
 
 MVP에서 제외한 것(SPEC 3장): 실시간 공동 편집, 팀원 초대, HWP/HWPX **내보내기**, 외부 논문 DB 검색, 모바일 앱, 결제.
 
@@ -108,7 +111,10 @@ MVP에서 제외한 것(SPEC 3장): 실시간 공동 편집, 팀원 초대, HWP/
 | `ANTHROPIC_MODEL` | 사용할 모델 ID. 코드에 기본값 없음 | AI 기능에 필수 | 없음 | `lib/ai/client.ts` |
 | `EMBEDDING_PROVIDER` | 임베딩 제공자. 현재 구현은 테스트용 `fake`뿐이며, 비우거나 모르는 값이면 trigram 검색만 사용 | 선택 | 없음 | `lib/search/embedding.ts` |
 | `EMBEDDING_API_KEY` | 외부 임베딩 API 키 자리. **현재 코드에서 읽지 않음**(실제 제공자 미구현, SPEC 14장 미결정) | — | 없음 | 없음 |
-| `AI_DAILY_LIMIT_PER_USER` | 사용자별 하루 AI 요청 한도(한국 시간 0시 기준) | 선택 | `100` | `lib/ai/quota.ts` |
+| `AI_DAILY_LIMIT_PER_USER` | 사용자별 하루 AI 요청 한도(한국 시간 0시 기준). 자동완성은 세지 않음 | 선택 | `100` | `lib/ai/quota.ts` |
+| `ANTHROPIC_AUTOCOMPLETE_MODEL` | 글쓰기 자동완성 모델 ID | 선택 | `claude-haiku-5-5` | `lib/ai/autocomplete.ts` |
+| `RATE_LIMIT_AUTOCOMPLETE_PER_MINUTE` | 사용자별 분당 자동완성 요청 한도 | 선택 | `20` | `lib/ai/autocomplete.ts` |
+| `AI_AUTOCOMPLETE_DAILY_LIMIT` | 사용자별 하루 자동완성 요청 한도(한국 시간 0시 기준, 프로세스 메모리로 셈) | 선택 | `300` | `lib/ai/autocomplete.ts` |
 | `MAX_UPLOAD_MB` | 업로드 최대 크기(MB) | 선택 | `50` | `lib/files/types.ts`, `server/upload-form.ts` |
 | `NEXT_PUBLIC_APP_NAME` | 화면에 보이는 서비스 이름(빌드 시 반영) | 선택 | `Re;Note` | `lib/messages.ts` |
 | `AUTH_TEST_MODE` | `1`이면 이메일만으로 로그인하는 테스트 로그인 활성화. **운영 금지** | 선택 | 꺼짐 | `server/auth-providers.ts` |
@@ -191,18 +197,20 @@ export E2E_DATABASE_URL=postgresql://researchmate:researchmate@localhost:5432/re
 - 백업 대상: PostgreSQL 볼륨(`db-data`), MinIO 볼륨(`minio-data`).
 - 휴지통 정리 cron을 등록합니다(아래 운영 주의).
 
-### B. Vercel(웹) + 별도 워커 호스트
+### B. Vercel(웹) + Supabase(DB·파일 저장소) — 무료 구성
 
-1. 관리형 PostgreSQL 16(pg_trgm·pgvector 지원), 관리형 Redis, S3 호환 스토리지를 준비합니다. 로컬 파일 드라이버는 쓸 수 없으므로 `S3_*`는 필수입니다.
-2. Vercel 프로젝트에 환경변수를 넣고 배포합니다. 마이그레이션은 배포 전에 `DATABASE_URL`을 운영 DB로 두고 `pnpm db:deploy`로 따로 실행합니다.
-3. 워커 호스트(VM 또는 컨테이너 서비스)에서 `worker/Dockerfile` 이미지를 실행합니다. 같은 `DATABASE_URL`, `REDIS_URL`, `S3_*`가 필요합니다. 웹 쪽에는 `CONVERSION_QUEUE=bullmq`(또는 `REDIS_URL`만 설정)를 둡니다.
+**단계별 안내는 `docs/deploy-vercel.md`에 있습니다** (Supabase 가입부터 Vercel 배포, Google 로그인 설정까지). 요점:
+
+1. Supabase에서 PostgreSQL과 Storage(S3 호환)를 씁니다. Redis와 변환 워커는 없습니다.
+2. `DATABASE_URL`은 트랜잭션 풀러(포트 6543), `DIRECT_URL`은 세션 풀러(포트 5432) 주소입니다. Vercel이 빌드할 때 `vercel-build` 스크립트(`prisma migrate deploy && next build`)가 `DIRECT_URL`로 마이그레이션을 적용합니다.
+3. Vercel에서는 `lib/features.ts`가 서버 HWP 변환·파일 가져오기(`SERVER_CONVERSION`)와 PDF 내보내기(`PDF_EXPORT`)를 기본으로 끕니다. 해당 API는 501과 안내 문구를 돌려주고, 에디터의 내보내기에서 PDF 항목이 숨겨집니다. HWP는 브라우저에서 엽니다.
 
 주의:
-- **PDF 내보내기가 웹 프로세스에서 Chromium을 실행**합니다. Vercel 서버리스 함수에는 Playwright가 내려받는 Chromium이 들어 있지 않고 함수 크기·실행 시간 제한도 있어, 그대로는 PDF 내보내기가 동작하지 않을 가능성이 큽니다. 내보내기를 워커로 옮기거나 서버리스용 Chromium을 붙이는 작업이 필요합니다(구현하지 않음).
-- `CONVERSION_QUEUE=inline`은 웹 프로세스가 응답 뒤에 변환을 계속 처리하는 방식이라 서버리스에서는 쓰지 마십시오. 반드시 Redis + 워커를 씁니다.
+- 실제 Supabase·Vercel에 배포해 보지는 못했습니다(**검증하지 못함**). 특히 Supabase Storage의 presigned URL 업로드(브라우저 → 스토리지 직접 PUT)와 CORS는 확인하지 못했습니다.
 - rate limit이 프로세스 메모리 기반이라 서버리스 인스턴스마다 따로 셉니다(아래 운영 주의).
-- 일반 자산 업로드는 presigned URL로 브라우저가 스토리지에 직접 올리지만, **HWP 변환(`/api/convert`)과 가져오기(`/api/import`)는 파일을 웹 서버가 multipart로 직접 받습니다**(`server/upload-form.ts`). 서버리스 플랫폼의 요청 본문 크기 제한이 `MAX_UPLOAD_MB`(기본 50MB)보다 작으면 큰 파일의 변환·가져오기가 실패합니다.
-- 변환 워커는 SPEC 9장대로 외부 인터넷이 막힌 네트워크에서 돌려야 합니다(DB·Redis·스토리지에만 접근).
+- 서버리스 함수의 요청·응답 본문 크기 제한 때문에, 서버를 거쳐 내려받는 큰 파일(`/api/assets/:id`)이나 multipart 업로드가 실패할 수 있습니다.
+- 서버 변환까지 쓰려면 관리형 Redis와 워커 호스트(VM 또는 컨테이너 서비스)에서 `worker/Dockerfile` 이미지를 실행하고(같은 `DATABASE_URL`, `REDIS_URL`, `S3_*`), 웹 쪽에 `SERVER_CONVERSION=1`과 `REDIS_URL`을 둡니다. 서버리스에서는 `CONVERSION_QUEUE=inline`이 동작하지 않습니다(코드가 501로 막습니다). 변환 워커는 SPEC 9장대로 외부 인터넷이 막힌 네트워크에서 돌립니다.
+- PDF 내보내기를 서버리스에서 켜려면(`PDF_EXPORT=1`) 서버리스용 Chromium이 필요합니다(구현하지 않음).
 
 ## 운영 주의
 

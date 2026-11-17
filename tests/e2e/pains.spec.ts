@@ -27,7 +27,9 @@ test("비로그인은 목록·상세를 읽을 수 있고, 작성 화면은 로�
   await expect(page).toHaveURL(path);
   await expect(page.getByRole("heading", { level: 1, name: title })).toBeVisible();
   await expect(page.getByRole("link", { name: "로그인하고 공감하기" })).toBeVisible();
+  // 고충은 한 번에 쓰는 글이다: 댓글 목록·작성 폼이 없다(로그인 여부와 무관).
   await expect(page.getByLabel("댓글 쓰기")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: /^댓글/ })).toHaveCount(0);
 
   await page.goto("/pains/new");
   await expect(page).toHaveURL(/\/login\?callbackUrl=/);
@@ -46,13 +48,12 @@ test("익명 글: 서버가 내려준 HTML·API 어디에도 작성자 정보가
   const authorId = session.user.id as string;
   expect(authorId).toBeTruthy();
   const path = await writePain(author, { title, body: "이름을 밝히기 어려운 이야기", anonymous: true });
-  // 작성자 본인 화면: "익명"으로 보이고, 내 글 관리 도구가 있다.
+  // 작성자 본인 화면: "익명"으로 보이고, 접힌 "내 글 관리"를 펼치면 작성자 도구가 있다.
   await expect(author.getByTestId("pain-author")).toHaveText("익명");
+  await author.getByText("내 글 관리").click();
   await expect(author.getByRole("button", { name: "해결됨으로 표시" })).toBeVisible();
-  // 글쓴이가 자기 글에 댓글을 달아도 이름이 드러나지 않는다.
-  await author.getByLabel("댓글 쓰기").fill("글쓴이가 덧붙입니다");
-  await author.getByRole("button", { name: "댓글 등록" }).click();
-  await expect(author.getByRole("heading", { name: "댓글 1" })).toBeVisible();
+  // 댓글 UI는 작성자에게도 없다.
+  await expect(author.getByLabel("댓글 쓰기")).toHaveCount(0);
 
   const otherCtx = await browser.newContext();
   const other = await otherCtx.newPage();
@@ -70,7 +71,7 @@ test("익명 글: 서버가 내려준 HTML·API 어디에도 작성자 정보가
     }
     await viewer.goto(path);
     await expect(viewer.getByTestId("pain-author")).toHaveText("익명");
-    await expect(viewer.getByText("글쓴이가 덧붙입니다")).toBeVisible();
+    await expect(viewer.getByText("내 글 관리")).toHaveCount(0);
     await expect(viewer.getByRole("button", { name: "해결됨으로 표시" })).toHaveCount(0);
     // 렌더링이 끝난 DOM(스트리밍된 RSC 데이터 포함)에도 없다.
     const dom = await viewer.content();
@@ -82,7 +83,7 @@ test("익명 글: 서버가 내려준 HTML·API 어디에도 작성자 정보가
   await guestCtx.close();
 });
 
-test("마크다운 본문·댓글의 스크립트는 실행되지 않는다", async ({ page }) => {
+test("마크다운 본문의 스크립트는 실행되지 않는다", async ({ page }) => {
   await login(page, uniqueEmail("xss"));
   const dialogs: string[] = [];
   page.on("dialog", (d) => {
@@ -97,9 +98,6 @@ test("마크다운 본문·댓글의 스크립트는 실행되지 않는다", as
     '<a href="javascript:alert(4)" onclick="alert(5)">클릭</a>',
   ].join("\n\n");
   await writePain(page, { title: `XSS 확인 ${Date.now()}`, body: payload });
-  await page.getByLabel("댓글 쓰기").fill(payload);
-  await page.getByRole("button", { name: "댓글 등록" }).click();
-  await expect(page.getByRole("heading", { name: "댓글 1" })).toBeVisible();
   await page.reload();
 
   await expect(page.locator("article strong", { hasText: "문장" })).toBeVisible();
@@ -121,6 +119,7 @@ test("작성자는 수정·삭제할 수 있고, 목록에서 필터·정렬이 
 
   // 수정
   await page.goto(path);
+  await page.getByText("내 글 관리").click();
   await page.getByRole("link", { name: "수정" }).click();
   await expect(page).toHaveURL(`${path}/edit`);
   await expect(page.getByLabel("제목")).toHaveValue(`수정 전 ${stamp}`);
@@ -129,26 +128,32 @@ test("작성자는 수정·삭제할 수 있고, 목록에서 필터·정렬이 
   await expect(page).toHaveURL(path);
   await expect(page.getByRole("heading", { level: 1, name: `수정 후 ${stamp}` })).toBeVisible();
 
-  // 태그 필터 + 단계 필터 (키보드로 폼 제출)
+  // 태그 필터 + 단계 필터 (필터는 접혀 있다. 키보드로 폼 제출)
   await page.goto("/pains");
+  await expect(page.getByRole("textbox", { name: "태그" })).toBeHidden();
+  await page.getByText("필터", { exact: true }).click();
   await page.getByRole("textbox", { name: "태그" }).fill(tag);
   await page.getByRole("textbox", { name: "태그" }).press("Enter");
   await expect(page).toHaveURL(/tag=/);
   await expect(page.getByText("2건")).toBeVisible();
+  // 필터가 적용 중이면 펼친 채로 보이고, 개수가 표시된다.
+  await expect(page.getByText("필터 1", { exact: true })).toBeVisible();
   await page.getByRole("search").getByLabel("연구 단계").selectOption({ label: "실험" });
-  await page.getByRole("button", { name: "적용" }).click();
+  await page.getByRole("button", { name: "검색" }).click();
   await expect(page.getByText("1건")).toBeVisible();
   await expect(page.getByRole("link", { name: `수정 후 ${stamp}` })).toBeVisible();
   await expect(page.getByRole("link", { name: `다른 글 ${stamp}` })).toHaveCount(0);
 
   // 공감순 정렬
-  await page.getByRole("link", { name: "초기화" }).click();
+  await page.getByRole("link", { name: "필터 지우기" }).click();
+  await expect(page).toHaveURL(/\/pains$/);
   await page.getByLabel("정렬").selectOption({ label: "공감순" });
-  await page.getByRole("button", { name: "적용" }).click();
+  await page.getByRole("button", { name: "검색" }).click();
   await expect(page).toHaveURL(/sort=popular/);
 
   // 삭제
   await page.goto(path);
+  await page.getByText("내 글 관리").click();
   page.once("dialog", (d) => d.accept());
   await page.getByRole("button", { name: "삭제" }).click();
   await expect(page).toHaveURL(/\/pains$/);

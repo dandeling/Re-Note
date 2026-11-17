@@ -8,7 +8,18 @@
     "skipToContent": "본문으로 건너뛰기"
   },
   "home": {
-    "searchPlaceholder": "키워드로 사이트 내 연구·고충 검색 (예: 음향 블랙홀 진동 감쇠)",
+    "titleBefore": "비슷한 연구를 찾고, ",
+    "titleMark": "막힌 점",
+    "titleAfter": "을 나눠요",
+    "lead": "먼저 해 본 사람의 한계와 고충을 읽고, 내 보고서는 여기서 바로 씁니다.",
+    "stats": "연구 {research}건 · 고충 {pains}건",
+    "linksLabel": "바로 가기",
+    "links": {
+      "explore": { "title": "연구 탐색", "text": "공개된 연구의 요약과 한계, 결과보고서" },
+      "pains": { "title": "고충 게시판", "text": "실험하다 막힌 점을 나누고 공감하기" },
+      "projects": { "title": "내 프로젝트", "text": "보고서 쓰기, 표·그래프, 연구 공개" }
+    },
+    "searchPlaceholder": "키워드로 연구·고충 찾기 (예: 음향 블랙홀)",
     "searchButton": "검색",
     "searchLabel": "사이트 내 검색어"
   },
@@ -28,7 +39,7 @@
     "explore": "연구 탐색",
     "pains": "고충 게시판",
     "projects": "내 프로젝트",
-    "convert": "HWP → PDF 변환",
+    "convert": "한글 파일 열기",
     "settings": "설정",
     "login": "로그인",
     "logout": "로그아웃"
@@ -44,11 +55,12 @@
     "PAYLOAD_TOO_LARGE": "파일이 너무 큽니다.",
     "UNSUPPORTED_FILE": "지원하지 않는 파일 형식입니다.",
     "AI_UNAVAILABLE": "AI 기능을 지금 사용할 수 없습니다.",
+    "NOT_IMPLEMENTED": "이 서버에서는 지원하지 않는 기능입니다.",
     "INTERNAL_ERROR": "서버 오류가 발생했습니다."
   },
   "projects": {
     "listHeading": "프로젝트 목록",
-    "empty": "아직 프로젝트가 없어요. 아래에서 첫 프로젝트를 만들어 보세요.",
+    "empty": "아직 프로젝트가 없어요. 위의 새 프로젝트에서 첫 프로젝트를 만들어 보세요.",
     "noDescription": "설명 없음",
     "docCount": "문서 {n}개",
     "newHeading": "새 프로젝트",
@@ -159,6 +171,7 @@
     "another": "다른 파일 변환",
     "layoutNotice": "레이아웃이 원본과 다를 수 있습니다. 글꼴·줄바꿈·쪽 나눔이 달라질 수 있으니 결과를 꼭 확인해 주세요.",
     "onlyHwp": "HWP(.hwp) 또는 HWPX(.hwpx) 파일만 변환할 수 있습니다.",
+    "serverDisabled": "이 서버에서는 HWP 변환을 지원하지 않습니다. HWP 파일은 브라우저에서 바로 열어 볼 수 있어요.",
     "uploading": "파일을 올리는 중…",
     "status": {
       "QUEUED": "변환 대기 중…",
@@ -183,6 +196,7 @@
   "importer": {
     "entry": "가져오기",
     "title": "파일 가져오기",
+    "serverDisabled": "이 서버에서는 HWP 변환과 서버 파일 가져오기를 지원하지 않습니다. HWP 파일은 브라우저에서 바로 열어 볼 수 있어요.",
     "intro": "PDF, HWP, HWPX, DOCX, Markdown 파일을 편집할 수 있는 문서로 가져옵니다.",
     "safeNotice": "가져오기는 항상 새 문서를 만듭니다. 기존 문서의 내용은 바뀌지 않아요.",
     "insertNotice": "\"{title}\" 문서의 끝에 붙여 넣습니다. 붙이기 전 내용은 버전 기록에 자동으로 저장됩니다.",
@@ -242,12 +256,10 @@
     "resultCount": "{n}건",
     "anonymous": "익명",
     "noName": "이름 없음",
-    "postAuthorBadge": "글쓴이",
     "mineBadge": "내 글",
     "resolvedBadge": "해결됨",
     "unresolvedBadge": "해결 중",
     "meTooCount": "나도 겪었어요 {n}",
-    "commentCount": "댓글 {n}",
     "stageLabel": "연구 단계",
     "stages": {
       "TOPIC": "주제 선정",
@@ -270,8 +282,10 @@
       "fieldPlaceholder": "예: 물리",
       "tag": "태그",
       "tagPlaceholder": "예: 통계",
-      "apply": "적용",
-      "reset": "초기화"
+      "toggle": "필터",
+      "toggleCount": "필터 {n}",
+      "search": "검색",
+      "reset": "필터 지우기"
     },
     "pagination": {
       "label": "페이지 이동",
@@ -303,7 +317,7 @@
       "back": "목록으로",
       "edit": "수정",
       "delete": "삭제",
-      "deleteConfirm": "이 고충을 삭제할까요? 댓글과 공감도 함께 삭제되며 되돌릴 수 없어요.",
+      "deleteConfirm": "이 고충을 삭제할까요? 공감 기록도 함께 삭제되며 되돌릴 수 없어요.",
       "postedAt": "{date} 작성",
       "linkedResearch": "연결된 연구 보기",
       "linkedProject": "연결된 내 프로젝트 보기",
@@ -320,15 +334,6 @@
     "reaction": {
       "meToo": "나도 겪었어요",
       "loginRequired": "로그인하고 공감하기"
-    },
-    "comments": {
-      "heading": "댓글 {n}",
-      "empty": "아직 댓글이 없어요.",
-      "label": "댓글 쓰기",
-      "placeholder": "비슷한 경험이나 해결 방법을 나눠 주세요.",
-      "submit": "댓글 등록",
-      "loginRequired": "댓글을 쓰려면 로그인해 주세요.",
-      "login": "로그인"
     },
     "report": {
       "button": "신고",
@@ -386,6 +391,30 @@
     "hint": "Enter 완료 · Shift+Enter 줄바꿈 · Esc 닫기",
     "done": "완료",
     "paletteLabel": "수식 팔레트",
+    "easy": {
+      "modeLabel": "입력 방식",
+      "modeEasy": "쉬운 입력",
+      "modeLatex": "LaTeX 직접",
+      "inputLabel": "수식 (쉬운 입력)",
+      "placeholder": "예: (x+1)/2, x^2, sqrt(x), 알파, <=",
+      "hint": "평소 쓰는 대로 쳐요. 예: a/b, x^2, a_1, sqrt(x), pi 또는 파이, >= (LaTeX도 돼요)",
+      "keysNew": "Enter 넣기 · Esc 취소",
+      "keysNewLatex": "Enter 넣기 · Shift+Enter 줄바꿈 · Esc 취소",
+      "keysEdit": "Enter 완료 · Esc 닫기",
+      "insert": "넣기",
+      "cancel": "취소",
+      "preview": "수식 미리보기",
+      "previewEmpty": "여기에 수식이 보여요",
+      "converted": "저장될 LaTeX",
+      "notUnderstood": "이 부분을 이해하지 못했어요: “{part}”. 괄호 짝이나 기호를 확인해 주세요.",
+      "notUnderstoodGeneral": "수식으로 바꾸지 못한 부분이 있어요. 괄호 짝이나 기호를 확인해 주세요.",
+      "cannotConvert": "이 수식은 쉬운 표기로 옮길 수 없어 LaTeX 그대로 보여 줘요. 그대로 고쳐도 돼요.",
+      "templatesLabel": "자주 쓰는 수식 틀",
+      "moreLabel": "그 밖의 기호",
+      "more": "더 보기",
+      "less": "접기",
+      "cheat": "직접 칠 때: 분수 a/b · 제곱 x^2 · 첨자 a_1 · 루트 sqrt(x) · 그리스 문자 alpha 또는 알파 · <= >= != · 합 sum(i=1, n, a_i) · 적분 int(0, 1, x dx)"
+    },
     "equationNumber": "식 번호 {tag}",
     "ai": {
       "open": "자연어·이미지로 수식 만들기",
@@ -495,6 +524,17 @@
       "badImage": "이미지 형식이 올바르지 않습니다. PNG, JPEG, GIF, WebP 이미지를 사용해 주세요.",
       "noFormula": "수식을 찾지 못했습니다. 설명이나 이미지를 바꿔 다시 시도해 주세요."
     }
+  },
+  "autocomplete": {
+    "toggle": "자동완성",
+    "toggleOn": "글쓰기 자동완성 켜짐 (멈추면 이어질 말을 흐리게 제안, Tab으로 받아들이기, Ctrl+Space로 바로 요청)",
+    "toggleOff": "글쓰기 자동완성 꺼짐",
+    "unavailable": "자동완성을 쓸 수 없습니다: {reason}",
+    "hint": "Tab으로 받아들이기 · Esc로 닫기",
+    "announce": "자동완성 제안이 있습니다. Tab으로 받아들이고 Esc로 닫습니다.",
+    "accepted": "제안을 넣었습니다.",
+    "dailyLimit": "오늘 자동완성 {n}회를 모두 사용했습니다. 내일 다시 이용해 주세요.",
+    "limitReached": "오늘 자동완성 한도를 다 썼어요"
   },
   "data": {
     "heading": "데이터",
@@ -845,9 +885,11 @@
     "tab": "내보내기",
     "title": "내보내기",
     "pdf": "PDF로 내보내기",
+    "pdfDisabled": "이 서버에서는 PDF 내보내기를 지원하지 않습니다. Word(DOCX)로 내보낸 뒤 PDF로 저장해 주세요.",
     "docx": "Word(DOCX)로 내보내기",
     "md": "Markdown으로 내보내기",
     "note": "PDF와 DOCX에는 현재 서식(용지·여백·글꼴·줄 간격·쪽 번호)이 반영돼요.",
+    "noteNoPdf": "DOCX에는 현재 서식(용지·여백·글꼴·줄 간격·쪽 번호)이 반영돼요. 이 서버에서는 PDF 내보내기를 지원하지 않아요.",
     "working": "내보내는 중…",
     "done": "{name} 파일을 내려받았어요.",
     "failed": "내보내지 못했어요."

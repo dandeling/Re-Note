@@ -56,7 +56,8 @@ export function getStorage(): Storage {
           accessKeyId: env.S3_ACCESS_KEY,
           secretAccessKey: env.S3_SECRET_KEY,
         })
-      : new LocalStorage(path.resolve(env.STORAGE_LOCAL_DIR || ".data/storage"));
+      : // 로컬 드라이버는 개발·테스트용. 번들 추적이 이 동적 경로 때문에 프로젝트 전체를 서버 함수에 넣지 않게 한다.
+        new LocalStorage(path.resolve(/* turbopackIgnore: true */ env.STORAGE_LOCAL_DIR || ".data/storage"));
   cached = { signature, storage };
   return storage;
 }

@@ -30,6 +30,15 @@ export default async function ProjectsPage({ searchParams }: PageProps<"/project
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-8 px-4 py-10">
       <h1 className="text-2xl font-bold">{messages.nav.projects}</h1>
+      {status === "active" ? (
+        // 만들기 폼은 "새 프로젝트"를 눌러야 펼쳐진다. 프로젝트가 하나도 없으면 처음부터 펼쳐 둔다.
+        <details open={projects.length === 0} className="group max-w-2xl">
+          <summary className="inline-flex h-9 cursor-pointer list-none items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 group-open:mb-4 group-open:bg-secondary group-open:text-secondary-foreground [&::-webkit-details-marker]:hidden">
+            {t.newHeading}
+          </summary>
+          <ProjectForm />
+        </details>
+      ) : null}
       <nav aria-label={t.listHeading} className="flex gap-1 border-b">
         {TABS.map((tab) => (
           <Link
@@ -72,7 +81,8 @@ export default async function ProjectsPage({ searchParams }: PageProps<"/project
                   <CardContent className="flex flex-col gap-3">
                     <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
                       <span>{t.docCount.replace("{n}", String(p._count.documents))}</span>
-                      {p.keywords.map((k) => (
+                      {/* 배지는 카드당 최대 2개 */}
+                      {p.keywords.slice(0, 2).map((k) => (
                         <Badge key={k} variant="secondary">
                           {k}
                         </Badge>
@@ -94,14 +104,6 @@ export default async function ProjectsPage({ searchParams }: PageProps<"/project
           </ul>
         )}
       </section>
-      {status === "active" ? (
-        <section aria-labelledby="project-new-heading" className="max-w-2xl">
-          <h2 id="project-new-heading" className="mb-3 text-lg font-semibold">
-            {t.newHeading}
-          </h2>
-          <ProjectForm />
-        </section>
-      ) : null}
     </main>
   );
 }

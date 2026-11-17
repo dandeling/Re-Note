@@ -23,8 +23,19 @@ function filenameOf(header: string | null, fallback: string): string {
 /**
  * 내보내기 (SPEC 7.5): PDF(서식 반영) / DOCX / Markdown.
  * 서버가 저장된 문서와 서식으로 만들므로, 먼저 아직 저장하지 않은 본문과 서식을 저장한다.
+ * `pdfEnabled`가 false면(Vercel 등 Chromium이 없는 배포, lib/features.ts) PDF 항목을 숨긴다.
  */
-export function ExportPanel({ format, docId, flush }: { format: DocumentFormat; docId: string; flush: () => Promise<unknown> }) {
+export function ExportPanel({
+  format,
+  docId,
+  flush,
+  pdfEnabled,
+}: {
+  format: DocumentFormat;
+  docId: string;
+  flush: () => Promise<unknown>;
+  pdfEnabled: boolean;
+}) {
   const t = messages.exporter;
   const [busy, setBusy] = useState<ExportFormat | null>(null);
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
@@ -65,7 +76,7 @@ export function ExportPanel({ format, docId, flush }: { format: DocumentFormat; 
   }
 
   const items: { kind: ExportFormat; label: string }[] = [
-    { kind: "pdf", label: t.pdf },
+    ...(pdfEnabled ? [{ kind: "pdf" as const, label: t.pdf }] : []),
     { kind: "docx", label: t.docx },
     { kind: "md", label: t.md },
   ];
@@ -73,7 +84,7 @@ export function ExportPanel({ format, docId, flush }: { format: DocumentFormat; 
   return (
     <section aria-label={t.title} data-testid="export-panel" className="flex flex-col gap-3">
       <h2 className="text-sm font-semibold">{t.title}</h2>
-      <p className="text-xs text-muted-foreground">{t.note}</p>
+      <p className="text-xs text-muted-foreground">{pdfEnabled ? t.note : t.noteNoPdf}</p>
       <div className="flex flex-col gap-2">
         {items.map((item) => (
           <Button key={item.kind} type="button" size="sm" variant="outline" disabled={busy !== null} onClick={() => void run(item.kind)}>
