@@ -2,7 +2,9 @@
    외부 엔진 없이 브라우저에서 직접 읽는다.
    - HWP 5.x: Compound File(CFB/OLE2) → FileHeader → DocInfo(스타일·문단 모양) → BodyText/SectionN(raw deflate) → 레코드 트리 → 문단·표
    - HWPX: zip(중앙 디렉터리 → 로컬 헤더, 저장/deflate) → Contents/header.xml(스타일) + Contents/sectionN.xml → 문단·표
-   글자와 표만 뽑는다(쪽 배치·글꼴·그림은 다루지 않는다). 순수 함수는 RN._convert 로 노출. */
+   글자·표·그림을 뽑는다(쪽 배치·글꼴은 다루지 않는다). 그림은 HWP의 BinData 스트림 / HWPX의 BinData/ 항목에서
+   그림 개체가 가리키는 것만, 머리 바이트로 확인한 래스터 형식(PNG·JPEG·GIF·WebP, BMP는 PNG로 바꿈)만 쓴다.
+   순수 함수는 RN._convert 로 노출. */
 (function () {
   "use strict";
   const RN = window.RN;
@@ -10,6 +12,8 @@
   const h = RN.h;
   const MAX_FILE = 50 * 1024 * 1024;
   const MAX_INFLATED = 400 * 1024 * 1024; // 압축 폭탄 방지(풀린 크기 합)
+  const MAX_IMAGES = 200; // 파일 하나에서 꺼내는 그림 수
+  const MAX_IMAGE_BYTES = 60 * 1024 * 1024; // 꺼내는 그림 크기 합
 
   // =====================================================================
   // 오류
@@ -240,7 +244,7 @@
   // HWP 5.x 레코드
   // =====================================================================
   const TAG = {
-    PARA_SHAPE: 25, STYLE: 26,
+    BIN_DATA: 18, PARA_SHAPE: 25, STYLE: 26,
     PARA_HEADER: 66, PARA_TEXT: 67, CTRL_HEADER: 71, LIST_HEADER: 72,
     SHAPE_COMPONENT: 76, TABLE: 77, PICTURE: 85, OLE: 84, EQEDIT: 88,
   };
@@ -289,13 +293,25 @@
     return out;
   }
   const hasTag = (node, tag) => node.children.some((c) => c.tag === tag || hasTag(c, tag));
+  /** 컨트롤 아래의 그림 개체 레코드(문단 안으로는 들어가지 않는다 — 그 안의 그림은 그 문단이 처리한다) */
+  function findPictures(node, out = []) {
+    for (const c of node.children) {
+      if (c.tag === TAG.PARA_HEADER) continue;
+      if (c.tag === TAG.PICTURE) out.push(c);
+      findPictures(c, out);
+    }
+    return out;
+  }
+  // 그림 개체(HWPTAG_SHAPE_COMPONENT_PICTURE): 테두리 12 + 좌표 32 + 자르기 16 + 여백 8 + 밝기·명암·효과 3 → BinData id(UINT16, 1부터)
+  const pictureBinId = (rec) => (rec.data.length >= 73 ? u16(rec.data, 71) : 0);
 
   // ---------- 공통: 문서를 모으는 상태 ----------
   function newCtx(headingOf) {
     return {
       headingOf,
       footnotes: [], endnotes: [],
-      stats: { pictures: 0, shapes: 0, textboxes: 0, equations: 0, headers: 0, comments: 0, multicol: false, partial: false, ole: 0 },
+      spill: [], // 표 칸·각주처럼 글자로만 모으는 곳에서 나온 그림: 바깥 문단 뒤에 놓는다
+      stats: { pictures: 0, images: 0, imgMissing: 0, imgUnsupported: 0, imgUnsupportedKinds: [], imgLimit: 0, shapes: 0, textboxes: 0, equations: 0, headers: 0, comments: 0, multicol: false, partial: false, ole: 0 },
     };
   }
   // U+F53A: 한컴 글꼴의 "한" 로고 글자(사용자 영역). 다른 글꼴에서는 네모로 보여 "한"으로 바꾼다.
@@ -312,7 +328,11 @@
     for (const c of t.cells) { (rows[c.row] = rows[c.row] || []).push(c.text.replace(/\s*\n\s*/g, " ")); }
     return [t.caption || "", ...rows.filter(Boolean).map((r) => r.join(" "))].filter(Boolean).join("\n");
   }
-  const flatten = (blocks) => blocks.map((b) => (b.type === "table" ? tableText(b) : b.text)).filter(Boolean).join("\n");
+  /** 블록 → 글자. 그림 블록은 글자가 없으므로 ctx.spill로 옮겨 바깥 문단 뒤에 놓이게 한다 */
+  const flatten = (blocks, ctx) => blocks.map((b) => {
+    if (b.type === "image") { if (ctx) ctx.spill.push(b); return ""; }
+    return b.type === "table" ? tableText(b) : b.text;
+  }).filter(Boolean).join("\n");
   /** 셀 목록을 정리해 표 블록으로: 행·열 수는 실제 셀 주소로 다시 계산하고 병합 span을 범위 안으로 자른다 */
   function makeTable(declRows, declCols, cells, caption) {
     let rows = 0, cols = 0;
@@ -344,7 +364,9 @@
     }
     const s = ctx.stats;
     if (s.partial) notes.push("파일 일부가 손상되어 읽을 수 있는 부분만 가져왔어요.");
-    if (s.pictures) notes.push(`그림 ${s.pictures}개는 가져오지 않았어요.`);
+    if (s.imgUnsupported) notes.push(`그림 ${s.imgUnsupported}개는 형식(${s.imgUnsupportedKinds.join(", ") || "알 수 없음"})을 지원하지 않아 가져오지 않았어요.`);
+    if (s.imgMissing) notes.push(`그림 ${s.imgMissing}개는 파일 안에서 찾지 못해 가져오지 않았어요.`);
+    if (s.imgLimit) notes.push(`그림 ${s.imgLimit}개는 한 파일에서 가져올 수 있는 양(${MAX_IMAGES}개, ${MAX_IMAGE_BYTES / 1024 / 1024}MB)을 넘어 건너뛰었어요.`);
     if (s.shapes + s.ole) notes.push(`도형·개체 ${s.shapes + s.ole}개는 가져오지 않았어요.`);
     if (s.textboxes) notes.push(`글상자 ${s.textboxes}개의 글자는 그 자리 아래에 문단으로 넣었어요.`);
     if (s.equations) notes.push(`수식 ${s.equations}개는 "[수식: …]" 글자로 넣었어요.`);
@@ -377,7 +399,7 @@
       for (let k = 0; k < ctrls.length; k++) if (!used.has(k) && (!chid || chidOf(ctrls[k]) === chid)) { used.add(k); return ctrls[k]; }
       return null;
     };
-    const subText = (ctrl) => { const sub = []; for (const p of collectParas(ctrl)) hwpParagraph(p, sub, ctx); return flatten(sub); };
+    const subText = (ctrl) => { const sub = []; for (const p of collectParas(ctrl)) hwpParagraph(p, sub, ctx); return flatten(sub, ctx); };
     const handle = (ctrl) => {
       const chid = chidOf(ctrl);
       switch (chid) {
@@ -396,9 +418,12 @@
         case "gso ": {
           const sub = [];
           for (const p of collectParas(ctrl)) hwpParagraph(p, sub, ctx);
-          if (hasTag(ctrl, TAG.PICTURE)) ctx.stats.pictures++;
+          const pics = findPictures(ctrl);
+          // 그림은 이 컨트롤이 속한 문단 바로 뒤에(캡션 문단보다 앞에) 자리 표시로 넣고, 읽은 뒤 실제 그림으로 바꾼다
+          for (const pic of pics) { ctx.stats.pictures++; after.push({ type: "image", ref: pictureBinId(pic) }); }
+          if (pics.length || hasTag(ctrl, TAG.PICTURE)) { /* 그림 */ }
           else if (hasTag(ctrl, TAG.OLE)) ctx.stats.ole++;
-          else if (sub.length) ctx.stats.textboxes++;
+          else if (sub.some((b) => b.type !== "image")) ctx.stats.textboxes++;
           else ctx.stats.shapes++;
           for (const b of sub) after.push(b);
           break;
@@ -452,6 +477,7 @@
     // 글자 안에 자리가 없는(남은) 컨트롤도 놓치지 않는다
     for (let k = 0; k < ctrls.length; k++) if (!used.has(k)) handle(ctrls[k]);
     flush();
+    for (const b of ctx.spill.splice(0)) after.push(b);
     for (const b of after) out.push(b);
   }
   function hwpTable(ctrl, ctx) {
@@ -466,7 +492,7 @@
         } else cur = { paras: captionParas };
       } else if (c.tag === TAG.PARA_HEADER && cur) cur.paras.push(c);
     }
-    const text = (paras) => { const sub = []; for (const p of paras) hwpParagraph(p, sub, ctx); return flatten(sub); };
+    const text = (paras) => { const sub = []; for (const p of paras) hwpParagraph(p, sub, ctx); return flatten(sub, ctx); };
     const out = cells.map((c) => ({ row: c.row, col: c.col, rowSpan: c.rowSpan, colSpan: c.colSpan, text: text(c.paras) }));
     return makeTable(declRows, declCols, out, text(captionParas).replace(/\s+/g, " ").trim());
   }
@@ -505,13 +531,14 @@
     };
 
     // DocInfo: 스타일 이름과 문단 모양(개요 수준)
-    const styles = [], paraShapes = [];
+    const styles = [], paraShapes = [], binData = [];
     const di = cfb.read("DocInfo");
     if (di) {
       try {
         const { list } = readRecords(await unpack(di));
         for (const r of list) {
           if (r.tag === TAG.PARA_SHAPE && r.data.length >= 4) paraShapes.push(u32(r.data, 0));
+          else if (r.tag === TAG.BIN_DATA) binData.push(readBinDataRecord(r.data));
           else if (r.tag === TAG.STYLE && r.data.length >= 2) {
             const d = r.data;
             const n1 = u16(d, 0);
@@ -556,8 +583,167 @@
       sections.push(out);
     }
     ctx.stats.partial = partial;
+    await resolveImages(sections, ctx, (ref) => loadHwpBin(cfb, binData, ref, compressed, budget));
     if (opts.onProgress) opts.onProgress(1);
     return finish(ctx, sections);
+  }
+
+  /** DocInfo의 HWPTAG_BIN_DATA → { type: 0 연결|1 포함|2 OLE 저장소, comp: 0 문서 설정|1 압축|2 압축 안 함, storageId, ext } */
+  function readBinDataRecord(d) {
+    if (d.length < 2) return { type: -1 };
+    const f = u16(d, 0);
+    const e = { type: f & 0xf, comp: (f >> 4) & 3, storageId: 0, ext: "" };
+    if ((e.type === 1 || e.type === 2) && d.length >= 4) e.storageId = u16(d, 2);
+    if (e.type === 1 && d.length >= 6) {
+      const n = u16(d, 4);
+      e.ext = utf16.decode(d.subarray(6, Math.min(d.length, 6 + n * 2))).trim().toLowerCase();
+    }
+    return e;
+  }
+  /** HWP 그림 개체의 BinData id(1부터, DocInfo 순서) → { bytes, ext, source } | { missing } | { unsupported } */
+  async function loadHwpBin(cfb, binData, ref, docCompressed, budget) {
+    const e = ref > 0 ? binData[ref - 1] : null;
+    if (!e || e.type === 0) return { missing: true }; // 연결된(밖에 있는) 그림
+    if (e.type !== 1) return { unsupported: "OLE" };
+    const base = "BinData/BIN" + e.storageId.toString(16).toUpperCase().padStart(4, "0");
+    let path = base + "." + e.ext;
+    if (!cfb.has(path)) {
+      const want = path.toLowerCase();
+      path = cfb.names().find((n) => n.toLowerCase() === want) || "";
+      if (!path) return { missing: true };
+    }
+    const raw = cfb.read(path);
+    if (!raw || !raw.length) return { missing: true };
+    const compressed = e.comp === 1 || (e.comp === 0 && docCompressed);
+    // 압축 표시가 있어도 실제로는 안 된 경우가 있어, 풀린 쪽이 알아볼 수 있는 형식일 때만 바꾼다
+    let bytes = raw;
+    const rawKnown = !!imageInfo(raw).kind;
+    if (compressed || !rawKnown) {
+      try {
+        const r = await inflateRaw(raw, budget);
+        if (r.data.length && (imageInfo(r.data).kind || !rawKnown)) bytes = r.data;
+      } catch (err) { if (err && err.code === "too_large") throw err; /* 그대로 써 본다 */ }
+    }
+    return { bytes, ext: e.ext, source: path };
+  }
+
+  // =====================================================================
+  // 그림: 형식 확인·크기·자리 표시 → 그림 블록
+  // =====================================================================
+  const RASTER = { png: "image/png", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", bmp: "image/bmp" };
+  const EXT_OF = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp", "image/bmp": "bmp" };
+  const be16 = (b, o) => (b[o] << 8) | b[o + 1];
+  const be32 = (b, o) => b[o] * 0x1000000 + ((b[o + 1] << 16) | (b[o + 2] << 8) | b[o + 3]);
+  /**
+   * 머리 바이트로 그림 형식 판별 → { kind, mime, supported, label, width, height }.
+   * 브라우저가 그릴 수 있는 래스터(PNG·JPEG·GIF·WebP·BMP)만 supported. SVG·XML 등 글자로 된 형식은 절대 받지 않는다.
+   */
+  function imageInfo(input) {
+    const b = toBytes(input);
+    const out = (kind, w, hgt) => ({ kind, mime: RASTER[kind] || "", supported: !!RASTER[kind], label: kind.toUpperCase(), width: w || 0, height: hgt || 0 });
+    if (b.length >= 24 && b[0] === 0x89 && ascii(b, 1, 3) === "PNG" && b[4] === 0x0d && b[5] === 0x0a && b[6] === 0x1a && b[7] === 0x0a) return out("png", be32(b, 16), be32(b, 20));
+    if (b.length >= 4 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) {
+      let w = 0, hgt = 0;
+      for (let o = 2; o + 9 < b.length;) {
+        if (b[o] !== 0xff) { o++; continue; }
+        const m = b[o + 1];
+        if (m === 0xff) { o++; continue; }
+        if (m === 0xd8 || m === 0x01 || (m >= 0xd0 && m <= 0xd7)) { o += 2; continue; }
+        if (m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc) { hgt = be16(b, o + 5); w = be16(b, o + 7); break; }
+        if (m === 0xd9 || m === 0xda) break;
+        o += 2 + be16(b, o + 2);
+      }
+      return out("jpeg", w, hgt);
+    }
+    if (b.length >= 10 && (ascii(b, 0, 6) === "GIF87a" || ascii(b, 0, 6) === "GIF89a")) return out("gif", u16(b, 6), u16(b, 8));
+    if (b.length >= 30 && ascii(b, 0, 4) === "RIFF" && ascii(b, 8, 4) === "WEBP") {
+      const c = ascii(b, 12, 4);
+      if (c === "VP8 ") return out("webp", u16(b, 26) & 0x3fff, u16(b, 28) & 0x3fff);
+      if (c === "VP8L") { const v = u32(b, 21); return out("webp", (v & 0x3fff) + 1, ((v >>> 14) & 0x3fff) + 1); }
+      if (c === "VP8X") return out("webp", 1 + (b[24] | (b[25] << 8) | (b[26] << 16)), 1 + (b[27] | (b[28] << 8) | (b[29] << 16)));
+      return out("webp");
+    }
+    if (b.length >= 26 && b[0] === 0x42 && b[1] === 0x4d && [12, 40, 52, 56, 64, 108, 124].includes(u32(b, 14))) {
+      if (u32(b, 14) === 12) return out("bmp", u16(b, 18), u16(b, 20));
+      const hh = u32(b, 22);
+      return out("bmp", u32(b, 18), hh > 0x7fffffff ? 0x100000000 - hh : hh);
+    }
+    const no = (label) => ({ kind: label.toLowerCase(), mime: "", supported: false, label, width: 0, height: 0 });
+    if (b.length >= 4 && u32(b, 0) === 0x9ac6cdd7) return no("WMF");
+    if (b.length >= 18 && (u16(b, 0) === 1 || u16(b, 0) === 2) && u16(b, 2) === 9) return no("WMF");
+    if (b.length >= 44 && u32(b, 0) === 1 && ascii(b, 40, 4) === " EMF") return no("EMF");
+    if (b.length >= 4 && (ascii(b, 0, 4) === "II*\0" || ascii(b, 0, 4) === "MM\0*")) return no("TIFF");
+    if (sniff(b) === "hwp") return no("OLE");
+    if (b.length >= 2 && b[0] === 0x50 && b[1] === 0x4b) return no("ZIP");
+    let i = 0;
+    while (i < b.length && i < 64 && (b[i] <= 0x20 || b[i] === 0xef || b[i] === 0xbb || b[i] === 0xbf)) i++;
+    if (b[i] === 0x3c) return no(/svg/i.test(ascii(b, i, 512)) ? "SVG" : "XML");
+    return { kind: "", mime: "", supported: false, label: "", width: 0, height: 0 };
+  }
+  /** 캔버스로 PNG로 바꾼다(BMP처럼 저장·문서에 넣을 수 없는 래스터) → { bytes, width, height } | null */
+  async function toPng(bytes, mime) {
+    try {
+      if (typeof createImageBitmap !== "function" || typeof document === "undefined") return null;
+      const bmp = await createImageBitmap(new Blob([bytes], { type: mime }));
+      const c = document.createElement("canvas");
+      c.width = bmp.width; c.height = bmp.height;
+      c.getContext("2d").drawImage(bmp, 0, 0);
+      if (bmp.close) bmp.close();
+      const blob = await new Promise((r) => c.toBlob(r, "image/png"));
+      return blob ? { bytes: new Uint8Array(await blob.arrayBuffer()), width: c.width, height: c.height } : null;
+    } catch { return null; }
+  }
+  /**
+   * 자리 표시 { type: "image", ref } 를 실제 그림 블록 { type, mime, bytes, name, n, source, width, height } 로 바꾸거나 빼고,
+   * 못 가져온 수를 ctx.stats에 적는다. 같은 BinData를 여러 곳에서 쓰면 바이트를 함께 쓴다(개수·크기 제한은 한 번만 센다).
+   */
+  async function resolveImages(sections, ctx, loader) {
+    const cache = new Map();
+    const s = ctx.stats;
+    let used = 0, usedBytes = 0, n = 0;
+    const kinds = new Set();
+    for (const list of sections) {
+      for (let i = 0; i < list.length; i++) {
+        const b = list[i];
+        if (b.type !== "image" || b.bytes) continue;
+        let r = cache.get(b.ref);
+        if (!r) {
+          r = await (async () => {
+            if (b.ref == null || b.ref === 0 || b.ref === "") return { missing: true };
+            let got;
+            try { got = await loader(b.ref); } catch (e) { if (e && e.code === "too_large") throw e; return { missing: true }; }
+            if (!got || got.missing || got.unsupported) return got || { missing: true };
+            const info = imageInfo(got.bytes);
+            if (!info.supported) return { unsupported: info.label || (got.ext ? got.ext.toUpperCase() : "알 수 없음") };
+            if (used + 1 > MAX_IMAGES || usedBytes + got.bytes.length > MAX_IMAGE_BYTES) return { limit: true };
+            used++; usedBytes += got.bytes.length;
+            let { mime, width, height } = info, bytes = got.bytes;
+            if (info.kind === "bmp") {
+              const png = await toPng(bytes, mime);
+              if (!png) return { unsupported: "BMP" };
+              bytes = png.bytes; mime = "image/png"; width = png.width; height = png.height;
+            }
+            if (bytes.byteLength !== bytes.buffer.byteLength) bytes = bytes.slice(); // 파일 전체 버퍼를 붙잡지 않게
+            return { ok: true, mime, bytes, width, height, source: got.source || "" };
+          })();
+          cache.set(b.ref, r);
+        }
+        if (r.ok) {
+          n++;
+          const img = { type: "image", mime: r.mime, bytes: r.bytes, name: `그림 ${n}.${EXT_OF[r.mime]}`, n, source: r.source };
+          if (r.width && r.height) { img.width = r.width; img.height = r.height; }
+          list[i] = img;
+          continue;
+        }
+        if (r.unsupported) { s.imgUnsupported++; kinds.add(r.unsupported); }
+        else if (r.limit) s.imgLimit++;
+        else s.imgMissing++;
+        list.splice(i, 1);
+        i--;
+      }
+    }
+    s.images = n;
+    s.imgUnsupportedKinds = [...kinds];
   }
 
   // =====================================================================
@@ -652,7 +838,7 @@
     let buf = "";
     const after = [];
     const flush = () => { pushPara(out, buf, heading); buf = ""; };
-    const subText = (el) => { const sub = []; for (const q of collectXParas(el)) xParagraph(q, sub, ctx); return flatten(sub); };
+    const subText = (el) => { const sub = []; for (const q of collectXParas(el)) xParagraph(q, sub, ctx); return flatten(sub, ctx); };
     const item = (c) => {
       const name = c.localName;
       if (name === "t") buf += xText(c);
@@ -677,9 +863,15 @@
       else if (SHAPES.has(name)) {
         const sub = [];
         for (const q of collectXParas(c)) xParagraph(q, sub, ctx);
-        if (name === "pic") ctx.stats.pictures++;
+        const pics = xPictures(c);
+        for (const pic of pics) {
+          ctx.stats.pictures++;
+          const img = xPicImage(pic);
+          after.push({ type: "image", ref: img ? img.getAttribute("binaryItemIDRef") || "" : "" });
+        }
+        if (pics.length) { /* 그림 */ }
         else if (name === "ole" || name === "chart" || name === "video") ctx.stats.ole++;
-        else if (sub.length) ctx.stats.textboxes++;
+        else if (sub.some((b) => b.type !== "image")) ctx.stats.textboxes++;
         else ctx.stats.shapes++;
         for (const b of sub) after.push(b);
       } else if (name === "compose" || name === "dutmal") buf += xText(c);
@@ -690,11 +882,28 @@
       else if (c.localName !== "linesegarray") item(c);
     }
     flush();
+    for (const b of ctx.spill.splice(0)) after.push(b);
     for (const b of after) out.push(b);
+  }
+  /** 도형 안의 그림 개체(hp:pic). 묶음(container) 안도 찾되 글상자 문단(hp:p) 안으로는 들어가지 않는다 */
+  function xPictures(el, out = []) {
+    if (el.localName === "pic") { out.push(el); return out; }
+    for (const c of kids(el)) if (c.localName !== "p") xPictures(c, out);
+    return out;
+  }
+  /** hp:pic 아래 hc:img(binaryItemIDRef). 채우기 무늬(fillBrush) 속 그림은 배경이라 보지 않는다 */
+  function xPicImage(pic) {
+    const stack = kids(pic);
+    while (stack.length) {
+      const c = stack.shift();
+      if (c.localName === "img" && c.getAttribute("binaryItemIDRef")) return c;
+      if (c.localName !== "p" && c.localName !== "fillBrush" && c.localName !== "pic") stack.push(...kids(c));
+    }
+    return null;
   }
   function xTable(tbl, ctx) {
     const cells = [];
-    const text = (el) => { const sub = []; for (const q of collectXParas(el)) xParagraph(q, sub, ctx); return flatten(sub); };
+    const text = (el) => { const sub = []; for (const q of collectXParas(el)) xParagraph(q, sub, ctx); return flatten(sub, ctx); };
     let r = 0;
     for (const tr of kids(tbl).filter((x) => x.localName === "tr")) {
       let c = 0;
@@ -763,8 +972,48 @@
       sections.push(out);
     }
     if (zip.partial) ctx.stats.partial = true;
+    if (sections.some((list) => list.some((b) => b.type === "image"))) {
+      const manifest = await readHpfManifest(zip);
+      await resolveImages(sections, ctx, (ref) => loadHwpxBin(zip, manifest, ref));
+    }
     if (opts.onProgress) opts.onProgress(1);
     return finish(ctx, sections);
+  }
+
+  /** Contents/content.hpf(OPF manifest) → Map(id → { href, mediaType, embedded }) */
+  async function readHpfManifest(zip) {
+    const map = new Map();
+    const name = zip.has("Contents/content.hpf") ? "Contents/content.hpf" : zip.names().find((n) => /(^|\/)content\.hpf$/i.test(n));
+    if (!name) return map;
+    try {
+      const doc = parseXml(await zip.read(name));
+      for (const it of doc.getElementsByTagNameNS("*", "item")) {
+        const id = it.getAttribute("id");
+        if (id) map.set(id, { href: it.getAttribute("href") || "", mediaType: it.getAttribute("media-type") || "", embedded: it.getAttribute("isEmbeded") !== "0" });
+      }
+    } catch (e) { if (e && e.code === "too_large") throw e; /* manifest 없이 BinData/<id>.* 로 찾아 본다 */ }
+    return map;
+  }
+  /** HWPX 그림 id → { bytes, ext, source } | { missing } */
+  async function loadHwpxBin(zip, manifest, id) {
+    const names = zip.names();
+    const lower = new Map(names.map((n) => [n.toLowerCase(), n]));
+    const m = manifest.get(id);
+    let path = "";
+    if (m) {
+      if (!m.embedded) return { missing: true };
+      let href = m.href.replace(/^\.?\//, "");
+      try { href = decodeURIComponent(href); } catch { /* 그대로 */ }
+      for (const cand of [href, "Contents/" + href]) { const hit = lower.get(cand.toLowerCase()); if (hit) { path = hit; break; } }
+    }
+    if (!path) {
+      const want = String(id).toLowerCase();
+      path = names.find((n) => /^bindata\//i.test(n) && n.slice(8).replace(/\.[^.]*$/, "").toLowerCase() === want) || "";
+    }
+    if (!path || !/^(Contents\/)?BinData\//i.test(path)) return { missing: true };
+    const bytes = await zip.read(path);
+    if (!bytes || !bytes.length) return { missing: true };
+    return { bytes, ext: (/\.([^.\/]+)$/.exec(path) || [])[1] || "", source: path };
   }
 
   /** 형식을 보고 알맞은 파서로 */
@@ -792,9 +1041,25 @@
     for (const c of b.cells) if (grid[c.row]) grid[c.row][c.col] = c.text;
     return grid;
   }
-  function toMarkdown(blocks) {
+  const MD_IMAGE = /^image\/(png|jpeg|gif|webp)$/;
+  function base64(bytes) {
+    let s = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(s);
+  }
+  /**
+   * 블록 → Markdown. 그림 블록은 독립된 줄 "![그림 1](data:image/png;base64,…)"(PNG·JPEG·GIF·WebP만).
+   * opts.images === "placeholder"이면(텍스트로 저장) 그림 대신 "(그림 1)"만 적는다.
+   */
+  function toMarkdown(blocks, opts = {}) {
     const out = [];
     for (const b of blocks || []) {
+      if (b.type === "image") {
+        const label = `그림 ${b.n || ""}`.trim();
+        if (opts.images !== "placeholder" && b.bytes && b.bytes.length && MD_IMAGE.test(b.mime)) out.push(`![${label}](data:${b.mime};base64,${base64(b.bytes)})`);
+        else out.push(`(${label})`);
+        continue;
+      }
       if (b.type === "heading") out.push("#".repeat(Math.max(1, Math.min(6, b.level))) + " " + mdInline(b.text.replace(/\s+/g, " ").trim()));
       else if (b.type === "paragraph") {
         const lines = b.text.split("\n").map((l) => l.trim()).filter(Boolean).map(mdLine);
@@ -809,11 +1074,102 @@
     return out.join("\n\n");
   }
   /** 블록 → 사람이 읽는 글자(가져오기 미리보기·검사용) */
-  const toText = (blocks) => (blocks || []).map((b) => (b.type === "table" ? tableText(b) : b.text)).join("\n\n");
+  const toText = (blocks) => (blocks || []).map((b) => (b.type === "table" ? tableText(b) : b.type === "image" ? `(그림 ${b.n})` : b.text)).join("\n\n");
+
+  // =====================================================================
+  // 가져오기 전에 그림 줄이기: 긴 변 1200px·JPEG 0.8(투명하면 PNG·800px), 한 장 60KB 넘으면 더 줄인다
+  // =====================================================================
+  const SHRINK = { maxBytes: 60 * 1024, maxSide: 1200, maxSideAlpha: 800, quality: 0.8 };
+  const canvasBlob = (c, type, q) => new Promise((r) => c.toBlob(r, type, q));
+  /** 그림 블록 → Promise<{ mime, bytes, width, height } | null>(그릴 수 없으면 null) */
+  async function shrinkImage(img, opt = {}) {
+    const o = Object.assign({}, SHRINK, opt);
+    if (!img || !img.bytes || !RASTER[imageInfo(img.bytes).kind]) return null;
+    let bmp;
+    try { bmp = await createImageBitmap(new Blob([img.bytes], { type: img.mime })); } catch { return null; }
+    const W = bmp.width, H = bmp.height;
+    if (!W || !H) return null;
+    const canvas = document.createElement("canvas");
+    const g = canvas.getContext("2d");
+    // 투명한 곳이 있는지: 작게 그려 알파를 본다(JPEG는 투명이 없다)
+    let alpha = false;
+    if (img.mime !== "image/jpeg") {
+      const k = Math.min(1, 256 / Math.max(W, H));
+      canvas.width = Math.max(1, Math.round(W * k)); canvas.height = Math.max(1, Math.round(H * k));
+      g.clearRect(0, 0, canvas.width, canvas.height);
+      g.drawImage(bmp, 0, 0, canvas.width, canvas.height);
+      const px = g.getImageData(0, 0, canvas.width, canvas.height).data;
+      for (let i = 3; i < px.length; i += 4) if (px[i] < 250) { alpha = true; break; }
+    }
+    const fits = (side) => Math.max(W, H) <= side;
+    if (img.bytes.length <= o.maxBytes && fits(alpha ? o.maxSideAlpha : o.maxSide) && MD_IMAGE.test(img.mime)) {
+      if (bmp.close) bmp.close();
+      return { mime: img.mime, bytes: img.bytes, width: W, height: H };
+    }
+    const draw = (scale, white) => {
+      canvas.width = Math.max(1, Math.round(W * scale)); canvas.height = Math.max(1, Math.round(H * scale));
+      g.clearRect(0, 0, canvas.width, canvas.height);
+      if (white) { g.fillStyle = "#fff"; g.fillRect(0, 0, canvas.width, canvas.height); }
+      g.imageSmoothingQuality = "high";
+      g.drawImage(bmp, 0, 0, canvas.width, canvas.height);
+    };
+    let best = null;
+    const attempt = async (type, q) => {
+      const blob = await canvasBlob(canvas, type, q);
+      if (!blob) return false;
+      if (!best || blob.size < best.size) best = { blob, mime: blob.type || type, width: canvas.width, height: canvas.height, size: blob.size };
+      return blob.size <= o.maxBytes;
+    };
+    let done = false;
+    if (alpha) {
+      for (let scale = Math.min(1, o.maxSideAlpha / Math.max(W, H)); !done && Math.max(W, H) * scale >= 48; scale *= 0.75) {
+        draw(scale, false);
+        done = await attempt("image/png");
+      }
+      if (!done) best = null; // 투명을 지키며 줄일 수 없으면 흰 바탕 JPEG로
+    }
+    if (!done) {
+      let scale = Math.min(1, o.maxSide / Math.max(W, H)), q = o.quality;
+      for (let k = 0; k < 30 && !done; k++) {
+        draw(scale, true);
+        done = await attempt("image/jpeg", q);
+        if (q > 0.55) q = Math.round((q - 0.1) * 100) / 100;
+        else scale *= 0.8;
+        if (Math.max(W, H) * scale < 16) break;
+      }
+    }
+    if (bmp.close) bmp.close();
+    if (!best) return null;
+    return { mime: best.mime, bytes: new Uint8Array(await best.blob.arrayBuffer()), width: best.width, height: best.height };
+  }
+  /** 가져오기용 Markdown: 그림을 줄여 data URL로 넣는다. 그릴 수 없는 그림은 "(그림 N)" 자리 표시 */
+  async function toImportMarkdown(blocks, opt) {
+    const cache = new Map();
+    const out = [];
+    for (const b of blocks || []) {
+      if (b.type !== "image") { out.push(b); continue; }
+      if (!cache.has(b.bytes)) cache.set(b.bytes, await shrinkImage(b, opt).catch(() => null));
+      const r = cache.get(b.bytes);
+      out.push(r ? Object.assign({}, b, { mime: r.mime, bytes: r.bytes, width: r.width, height: r.height }) : Object.assign({}, b, { bytes: null }));
+    }
+    return toMarkdown(out);
+  }
+  /** 가져온 뒤 문서 크기 제한으로 빠진 그림 안내(mod-editor가 RN.docs.lastImportInfo.imagesSkipped에 적는다) */
+  function skippedImagesMessage() {
+    const info = RN.docs && RN.docs.lastImportInfo;
+    const n = info && Number(info.imagesSkipped);
+    return n > 0 ? ` 그림 ${n}개는 문서 크기 제한으로 빠졌어요.` : "";
+  }
+  /** 문서를 열어(파싱) 그림 블록만 → { images, notes } */
+  async function extractImages(input, opts) {
+    const res = await parseAny(toBytes(input), opts);
+    return { images: res.blocks.filter((b) => b.type === "image"), notes: res.notes };
+  }
 
   // =====================================================================
   // 화면 공통
   // =====================================================================
+  const fmtSize = (n) => (n < 1024 ? `${n}B` : n < 1024 * 1024 ? `${Math.round(n / 1024)}KB` : `${(n / 1024 / 1024).toFixed(1)}MB`);
   const baseName = (name) => String(name || "문서").replace(/\.[^.]+$/, "").slice(0, 120) || "문서";
   const errMessage = (e) => (e && e.code && MESSAGES[e.code]) || (e && e.message && /[가-힣]/.test(e.message) ? e.message : MESSAGES.bad_file);
 
@@ -841,7 +1197,7 @@
     .cv-bar .cv-name { font-weight: 600; overflow-wrap: anywhere; min-width: 0; }
     .cv-notes { margin: 0; padding: 0; list-style: none; color: var(--muted); font-size: 0.85rem; }
     .cv-paper { background: var(--paper); color: var(--paper-fg); border-radius: 4px; box-shadow: 0 1px 3px color-mix(in srgb, var(--fg) 18%, transparent);
-      padding: clamp(18px, 6vw, 56px); max-width: 820px; width: 100%; margin: 0 auto; font-family: var(--font-body); font-size: 1rem; line-height: 1.75;
+      padding: clamp(18px, 6vw, 56px); max-width: 1080px; width: 100%; margin: 0 auto; font-family: var(--font-body); font-size: 1rem; line-height: 1.75;
       overflow-wrap: anywhere; min-width: 0; }
     .cv-paper > * + * { margin-top: 0.8em; }
     .cv-paper h2 { font-size: 1.35rem; margin-top: 1.4em; } .cv-paper h3 { font-size: 1.12rem; margin-top: 1.2em; } .cv-paper h4 { font-size: 1rem; margin-top: 1em; }
@@ -853,6 +1209,13 @@
     .cv-paper th, .cv-paper td { border: 1px solid color-mix(in srgb, var(--paper-fg) 40%, transparent); padding: 4px 9px; vertical-align: top; text-align: left; white-space: pre-wrap; min-width: 3em; }
     .cv-paper caption { caption-side: top; text-align: left; font-size: 0.88rem; padding-bottom: 4px; }
     .cv-paper .cv-eq { font-family: var(--font-mono); font-size: 0.9em; background: color-mix(in srgb, var(--paper-fg) 7%, transparent); border-radius: 3px; padding: 0 3px; }
+    .cv-paper .cv-fig { margin-left: 0; margin-right: 0; }
+    .cv-paper .cv-fig img { display: block; max-width: 100%; height: auto; }
+    .cv-unsaved { margin: 0; }
+    .cv-imgs { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+    .cv-imgs li { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .cv-imgs .cv-thumb { width: 48px; height: 48px; object-fit: contain; flex: none; background: var(--paper); border-radius: 3px; border: 1px solid var(--line); }
+    .cv-imgs .cv-imgname { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
     .cv-dialog .rn-field { margin-bottom: 12px; }
   `);
 
@@ -869,10 +1232,14 @@
     if (last < text.length) parts.push(text.slice(last));
     return parts;
   }
-  function renderBlocks(blocks) {
+  /** urlOf(block) → blob: URL(그림 미리보기). 없으면 그림은 건너뛴다 */
+  function renderBlocks(blocks, urlOf) {
     const frag = document.createDocumentFragment();
     for (const b of blocks) {
-      if (b.type === "heading") frag.append(h(b.level <= 1 ? "h2" : b.level === 2 ? "h3" : "h4", {}, b.text));
+      if (b.type === "image") {
+        const src = urlOf && urlOf(b);
+        if (src) frag.append(h("figure", { class: "cv-fig" }, h("img", { src, alt: `그림 ${b.n}`, width: b.width || null, height: b.height || null, decoding: "async" })));
+      } else if (b.type === "heading") frag.append(h(b.level <= 1 ? "h2" : b.level === 2 ? "h3" : "h4", {}, b.text));
       else if (b.type === "paragraph") frag.append(h("p", { class: b.note ? "cv-note" : null }, inlineNodes(b.text)));
       else if (b.type === "table") {
         const covered = new Set();
@@ -912,6 +1279,15 @@
     title: "한글 파일 열기",
     mount(root) {
       let alive = true, current = null, busy = 0;
+      // 그림 미리보기 blob: URL — 같은 바이트는 한 URL, 다른 파일을 열거나 화면을 떠나면 놓아 준다
+      let urls = new Map();
+      const urlOf = (b) => {
+        if (!b.bytes) return null;
+        let u = urls.get(b.bytes);
+        if (!u) { u = URL.createObjectURL(new Blob([b.bytes], { type: b.mime })); urls.set(b.bytes, u); }
+        return u;
+      };
+      const dropUrls = () => { for (const u of urls.values()) { try { URL.revokeObjectURL(u); } catch { /* 무시 */ } } urls = new Map(); };
       const fileInput = h("input", { type: "file", id: "convert-file", accept: ".hwp,.hwpx" });
       const status = h("div", { id: "convert-status", "aria-live": "polite", hidden: true });
       const out = h("div", { class: "rn-stack", id: "convert-out" });
@@ -920,7 +1296,7 @@
         fileInput);
       root.append(
         h("h1", {}, "한글 파일 열기"),
-        h("p", { class: "rn-muted", id: "convert-hint" }, "글자와 표만 읽어 옵니다. 쪽 배치·글꼴·그림은 원본과 다릅니다."),
+        h("p", { class: "rn-muted", id: "convert-hint" }, "글자·표·그림을 읽어 옵니다. 쪽 배치와 글꼴은 원본과 다릅니다."),
         drop, status, out);
 
       const say = (t, kind) => { status.hidden = !t; status.replaceChildren(t ? RN.notice(t, kind) : ""); };
@@ -928,12 +1304,13 @@
         if (!file) return;
         const my = ++busy;
         out.replaceChildren();
+        dropUrls();
         current = null;
         say("읽는 중…");
         try {
           const res = await readHwpFile(file, (t) => { if (alive && my === busy) say(t); });
           if (!alive || my !== busy) return;
-          current = { name: file.name, res, markdown: toMarkdown(res.blocks) };
+          current = { name: file.name, res, markdown: toMarkdown(res.blocks, { images: "placeholder" }) };
           say("");
           draw();
         } catch (e) {
@@ -955,7 +1332,9 @@
       function draw() {
         const s = current;
         const blocks = s.res.blocks;
-        const paras = blocks.filter((b) => b.type !== "table").length, tables = blocks.filter((b) => b.type === "table").length;
+        const paras = blocks.filter((b) => b.type !== "table" && b.type !== "image").length, tables = blocks.filter((b) => b.type === "table").length;
+        const images = blocks.filter((b) => b.type === "image");
+        dropUrls();
         const blocked = RN.writeBlockedReason();
         const importBtn = blocked ? null : h("button", { type: "button", class: "rn-btn rn-primary", id: "convert-import", onclick: () => importDialog() }, "내 프로젝트로 가져오기");
         const saveBtn = RN.caps.downloads ? h("button", { type: "button", class: "rn-btn", id: "convert-save", onclick: async () => {
@@ -967,14 +1346,45 @@
             if (!(e && e.code === "declined")) RN.toast("저장하지 못했어요.", "error");
           } finally { saveBtn.disabled = false; }
         } }, "텍스트로 저장") : null;
+        // 그림 저장: 같은 BinData를 여러 곳에 쓴 그림은 한 번만 보인다. 저장마다 사용자 확인이 뜨므로 한꺼번에 받기는 없다.
+        const uniq = [];
+        const seenBytes = new Map();
+        for (const b of images) {
+          const u = seenBytes.get(b.bytes);
+          if (u) u.also.push(b.n); else { const it = { b, also: [] }; seenBytes.set(b.bytes, it); uniq.push(it); }
+        }
+        const imgPanel = RN.caps.downloads && uniq.length ? h("ul", { class: "cv-imgs", id: "convert-images", hidden: true, "aria-label": "그림 목록" },
+          uniq.map(({ b, also }, i) => {
+            const label = `그림 ${b.n}` + (also.length ? `(${also.map((k) => "그림 " + k).join(", ")}와 같음)` : "");
+            const btn = h("button", { type: "button", class: "rn-btn", id: `convert-img-save-${i}`, "aria-label": `그림 ${b.n} 저장`, onclick: async () => {
+              btn.disabled = true;
+              try {
+                const r = await RN.caps.downloads.save({ filename: `${baseName(s.name)}-그림${b.n}.${EXT_OF[b.mime] || "png"}`, data: new Blob([b.bytes], { type: b.mime }) });
+                if (r && r.status === "saved") RN.toast(`그림 ${b.n}을 저장했어요.`);
+              } catch (e) {
+                if (!(e && e.code === "declined")) RN.toast("저장하지 못했어요.", "error");
+              } finally { btn.disabled = false; }
+            } }, "저장");
+            return h("li", {},
+              h("img", { class: "cv-thumb", src: urlOf(b), alt: "" }),
+              h("span", { class: "cv-imgname" }, label, h("br"), h("span", { class: "rn-muted rn-small" }, [b.width && b.height ? `${b.width}×${b.height} · ` : "", fmtSize(b.bytes.length)].join(""))),
+              btn);
+          })) : null;
+        const imgBtn = imgPanel ? h("button", { type: "button", class: "rn-btn", id: "convert-images-btn", "aria-expanded": "false", "aria-controls": "convert-images", onclick: () => {
+          imgPanel.hidden = !imgPanel.hidden;
+          imgBtn.setAttribute("aria-expanded", String(!imgPanel.hidden));
+        } }, "그림 저장") : null;
         const paper = h("article", { class: "cv-paper", id: "convert-paper", "aria-label": s.name + " 미리보기", tabIndex: 0 });
-        if (blocks.length) paper.append(renderBlocks(blocks));
+        if (blocks.length) paper.append(renderBlocks(blocks, urlOf));
         else paper.append(h("p", {}, "읽어 올 글자가 없어요."));
         out.replaceChildren(
           h("div", { class: "cv-bar" },
-            h("p", { id: "convert-summary", role: "status" }, h("span", { class: "cv-name" }, s.name), h("span", { class: "rn-muted rn-small" }, ` · 문단 ${paras}개 · 표 ${tables}개`)),
-            h("div", { class: "rn-row" }, saveBtn, importBtn)),
-          blocked ? h("p", { class: "rn-small rn-muted" }, blocked) : null,
+            h("p", { id: "convert-summary", role: "status" }, h("span", { class: "cv-name" }, s.name), h("span", { class: "rn-muted rn-small" }, ` · 문단 ${paras}개 · 표 ${tables}개` + (images.length ? ` · 그림 ${images.length}개` : ""))),
+            h("div", { class: "rn-row" }, saveBtn, imgBtn, importBtn)),
+          // 연 파일은 어디에도 저장되지 않는다는 한 줄 안내(쓸 수 없는 화면에서는 그 이유)
+          h("p", { class: "rn-small rn-muted cv-unsaved", id: "convert-unsaved" },
+            blocked || "아직 저장되지 않았어요. ‘내 프로젝트로 가져오기’를 누르면 문서로 저장되고, 그 뒤로는 자동 저장돼요."),
+          imgPanel,
           s.res.notes.length ? h("ul", { class: "cv-notes", id: "convert-notes" }, s.res.notes.map((n) => h("li", {}, n))) : null,
           paper);
       }
@@ -982,7 +1392,7 @@
       async function importDialog() {
         const s = current;
         if (!s) return;
-        if (!s.markdown.trim()) { RN.toast("가져올 글자가 없어요.", "error"); return; }
+        if (!s.res.blocks.length) { RN.toast("가져올 글자가 없어요.", "error"); return; }
         const proj = h("select", { id: "convert-project" }, h("option", { value: "" }, "불러오는 중…"));
         const title = h("input", { type: "text", id: "convert-title", value: baseName(s.name), maxLength: 200 });
         const msg = h("div", { "aria-live": "polite" });
@@ -1001,9 +1411,11 @@
           ok.disabled = true;
           try {
             const pid = proj.value;
-            const docId = await createImportedDoc(pid, { title: title.value.trim() || baseName(s.name), markdown: s.markdown, sourceName: s.name });
+            if (s.res.blocks.some((b) => b.type === "image")) msg.replaceChildren(RN.notice("그림을 줄이는 중…"));
+            if (s.importMarkdown == null) s.importMarkdown = await toImportMarkdown(s.res.blocks);
+            const docId = await createImportedDoc(pid, { title: title.value.trim() || baseName(s.name), markdown: s.importMarkdown, sourceName: s.name });
             close();
-            RN.toast("새 문서로 가져왔어요.");
+            RN.toast("새 문서로 가져왔어요." + skippedImagesMessage());
             if (docId) RN.go("editor", { projectId: pid, docId });
           } catch (err) {
             msg.replaceChildren(RN.notice((err && err.message) || "가져오지 못했어요.", "error"));
@@ -1028,7 +1440,7 @@
         }
       }
 
-      return () => { alive = false; const d = document.getElementById("convert-dialog"); if (d) { try { d.close(); } catch { /* 무시 */ } d.remove(); } };
+      return () => { alive = false; dropUrls(); const d = document.getElementById("convert-dialog"); if (d) { try { d.close(); } catch { /* 무시 */ } d.remove(); } };
     },
   });
 
@@ -1063,8 +1475,9 @@
         let payload;
         if (kind === "hwp" || kind === "hwpx" || kind === "hwp3" || /\.(hwp|hwpx)$/i.test(file.name)) {
           const res = await parseAny(bytes, { onProgress: (f) => say(`읽는 중… ${Math.round(f * 100)}%`) });
-          payload = { title, markdown: toMarkdown(res.blocks), sourceName: file.name };
-          if (!payload.markdown.trim()) throw new Error("가져올 글자가 없어요.");
+          if (!res.blocks.length) throw new Error("가져올 글자가 없어요.");
+          if (res.blocks.some((b) => b.type === "image")) say("그림을 줄이는 중…");
+          payload = { title, markdown: await toImportMarkdown(res.blocks), sourceName: file.name };
         } else if (/\.(md|markdown)$/i.test(file.name)) payload = { title, markdown: decodeText(bytes), sourceName: file.name };
         else if (/\.txt$/i.test(file.name) || file.type === "text/plain") payload = { title, text: decodeText(bytes), sourceName: file.name };
         else throw new Error("가져올 수 없는 파일이에요. .md, .txt, .hwp, .hwpx만 돼요.");
@@ -1072,7 +1485,7 @@
         const docId = await createImportedDoc(pid, payload);
         status.replaceChildren(h("p", { role: "status" }, `"${title}" 문서를 만들었어요. `,
           docId ? h("button", { type: "button", class: "rn-link", onclick: () => RN.go("editor", { projectId: pid, docId }) }, "열기") : null));
-        RN.toast("새 문서로 가져왔어요.");
+        RN.toast("새 문서로 가져왔어요." + (payload.markdown != null ? skippedImagesMessage() : ""));
       } catch (e) {
         say(errMessage(e), "error");
       } finally { input.value = ""; }
@@ -1081,5 +1494,5 @@
 
   RN.projectSections = RN.projectSections || [];
   RN.projectSections.push({ id: "import", label: "가져오기", mount: mountImportSection });
-  RN._convert = { parseHwp, parseHwpx, parseAny, toMarkdown, toText, sniff, decodeText, MESSAGES };
+  RN._convert = { parseHwp, parseHwpx, parseAny, toMarkdown, toText, sniff, decodeText, MESSAGES, extractImages, imageInfo, shrinkImage, toImportMarkdown, LIMITS: { MAX_IMAGES, MAX_IMAGE_BYTES, SHRINK } };
 })();

@@ -1,5 +1,6 @@
 /* 담당 C 테스트: 프로젝트·문서·에디터(자동 저장, 충돌, 초안, 스냅샷, 캡션·상호 참조, 수식, 서식, 검사, 내보내기, 휴지통, 접근 제어)
    + 2차: 여러 블록에 걸친 선택·편집, 한글 조합 입력, 문단 안 줄바꿈, DOCX 내보내기, 단순해진 UI(삽입 메뉴·접힌 패널·프로젝트 탭).
+   + 3차: 수식 입력 창(쉬운 표기 easyToLatex, 틀 버튼, 미리보기, 말로 만들기), Markdown 가져오기의 그림.
    실행: node tests/c.spec.cjs (포트 4103). 외부 요청은 막고 KaTeX·PapaParse는 로컬 node_modules에서 준다. */
 const { chromium } = require("playwright");
 const { spawn, spawnSync } = require("node:child_process");
@@ -229,7 +230,8 @@ async function main() {
     assert(await page.isHidden("#tb-insert-menu"), "Esc로 닫힘");
     assert(await page.evaluate(() => document.activeElement.id === "tb-insert"), "포커스가 버튼으로");
     const items = await page.$$eval("#tb-insert-menu [role=menuitem]", (els) => els.map((e) => e.textContent));
-    for (const want of ["표", "그림…", "수식", "수식 팔레트", "캡션", "그림 목차", "표 목차", "인용", "번호 목록"]) assert(items.includes(want), "메뉴 항목 " + want + ": " + items);
+    for (const want of ["표", "그림…", "수식", "캡션", "그림 목차", "표 목차", "인용", "번호 목록"]) assert(items.includes(want), "메뉴 항목 " + want + ": " + items);
+    assert(!items.includes("수식 팔레트"), "수식 팔레트는 수식 입력 창으로 합쳐짐: " + items);
     await page.keyboard.press("ArrowDown");
     await page.waitForSelector("#tb-insert-menu:not([hidden])");
     await page.keyboard.press("Tab");
@@ -286,7 +288,7 @@ async function main() {
     assert(textOf((await blocks(page))[ti - 1]) === "측정값", "캡션 글자");
   });
 
-  await test("$$…$$ 블록 수식과 $…$ 인라인 수식, 수식 팔레트, 수식 번호", async () => {
+  await test("$$…$$ 블록 수식과 $…$ 인라인 수식(쉬운 표기도 변환), 수식 번호", async () => {
     await lastPara(page).click();
     await page.keyboard.press("End");
     await page.keyboard.press("Enter");
@@ -298,15 +300,277 @@ async function main() {
     assert(inline.length === 1 && inline[0][0] === "a^2+b^2" && inline[0][1], "인라인 수식: " + JSON.stringify(inline));
     const para = (await blocks(page)).find((b) => b.content && b.content.some((n) => n.t === "math"));
     assert(para && textOf(para) === "에너지 ¤ 관계", "커서 위치 유지: " + JSON.stringify(para));
-    // 팔레트(삽입 메뉴 안)
-    await insertMenu(page, "tb-palette");
-    await page.waitForSelector("#ed-palette:not([hidden])");
-    await page.click("#ed-palette button[title='\\\\alpha']");
-    assert((await page.$$(".rn-im")).length === 2, "팔레트 삽입");
-    assert(await page.isHidden("#ed-palette"), "팔레트 닫힘");
+    // $ 안의 쉬운 표기도 LaTeX로
+    await page.keyboard.type(" 그리고 $x^2 + 1/2$");
+    const latexes = await page.$$eval(".rn-im", (els) => els.map((e) => e.dataset.latex));
+    assert(latexes.length === 2 && latexes[1] === "x^2 + \\frac{1}{2}", "$ 안 쉬운 표기: " + JSON.stringify(latexes));
     await page.evaluate(() => RN.editor.insertLatex("\\int_0^1 x\\,dx", { display: true }));
     const nums = await page.$$eval(".rn-blk-math .rn-eqno", (els) => els.map((e) => e.textContent));
     assert(JSON.stringify(nums) === '["(1)","(2)"]', "식 번호 2개: " + nums);
+  });
+
+  await test("easyToLatex: 쉬운 표기 표 (분수·첨자·루트·기호·그리스 문자·함수·합/적분/극한·벡터·절댓값·단위·LaTeX 유지·이상한 입력)", async () => {
+    const TABLE = [
+      // 분수
+      ["a/b", "\\frac{a}{b}"], ["(x+1)/(x-1)", "\\frac{x+1}{x-1}"], ["2x/3", "\\frac{2x}{3}"], ["x+1/2", "x+\\frac{1}{2}"], ["a/b/c", "\\frac{\\frac{a}{b}}{c}"],
+      // 거듭제곱·첨자
+      ["x^2", "x^2"], ["x^(n+1)", "x^{n+1}"], ["e^-x", "e^{-x}"], ["a_1", "a_1"], ["a_(ij)", "a_{ij}"], ["x^2^3", "{x^2}^3"],
+      // 제곱근
+      ["sqrt(x)", "\\sqrt{x}"], ["루트(x+1)", "\\sqrt{x+1}"], ["√x", "\\sqrt{x}"], ["√2/2", "\\frac{\\sqrt{2}}{2}"], ["root(3, x)", "\\sqrt[3]{x}"],
+      // 곱셈·기호
+      ["a*b", "a\\times b"], ["a·b", "a\\cdot b"], ["+-1", "\\pm1"], ["x<=1", "x\\le1"], ["a>=b", "a\\ge b"], ["a!=b", "a\\ne b"], ["a~=b", "a\\approx b"], ["x->0", "x\\to0"], ["inf", "\\infty"], ["무한대", "\\infty"], ["30°", "30^{\\circ}"],
+      // 그리스 문자
+      ["alpha+beta", "\\alpha+\\beta"], ["Delta x", "\\Delta x"], ["2pir^2", "2\\pi r^2"], ["알파 + 베타", "\\alpha + \\beta"], ["세타", "\\theta"], ["파이", "\\pi"], ["람다", "\\lambda"], ["시그마", "\\sigma"], ["오메가", "\\omega"], ["델타 t", "\\Delta t"],
+      // 함수
+      ["sin(x)", "\\sin(x)"], ["sinx", "\\sin x"], ["cos^2(x)+sin^2(x)=1", "\\cos^2(x)+\\sin^2(x)=1"], ["log_2(8)", "\\log_2(8)"], ["ln x", "\\ln x"], ["exp(x)", "\\exp(x)"],
+      // 합·적분·극한
+      ["sum(i=1, n, a_i)", "\\sum_{i=1}^{n} a_i"], ["int(a, b, f(x) dx)", "\\int_{a}^{b} f(x) \\,dx"], ["int(0, 1, x^2 dx)", "\\int_{0}^{1} x^2 \\,dx"], ["lim(x->0, sin(x)/x)", "\\lim_{x\\to0} \\frac{\\sin(x)}{x}"],
+      // 벡터·평균·절댓값
+      ["vec(a)", "\\vec{a}"], ["vec(AB)", "\\overrightarrow{AB}"], ["bar(x)", "\\bar{x}"], ["hat(y)", "\\hat{y}"], ["|x|", "\\left|x\\right|"], ["|x-1|<2", "\\left|x-1\\right|<2"],
+      // 단위
+      ["9.8 m/s^2", "9.8\\,\\mathrm{m/s^2}"], ["F = 10 N", "F = 10\\,\\mathrm{N}"], ["v = 3.0 × 10^8 m/s", "v = 3.0 \\times 10^8\\,\\mathrm{m/s}"], ["2 m + 3 x", "2\\,\\mathrm{m} + 3 x"],
+      // 종합
+      ["x = (-b +- sqrt(b^2-4ac))/(2a)", "x = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}"],
+      // 이미 LaTeX → 그대로
+      ["\\frac{a}{b}", "\\frac{a}{b}"], ["\\alpha^{2} + x_{i}", "\\alpha^{2} + x_{i}"], ["E=mc^2", "E=mc^2"],
+      // 한글 낱말은 글자로
+      ["가속도 = 9.8 m/s^2", "\\text{가속도} = 9.8\\,\\mathrm{m/s^2}"],
+    ];
+    const WEIRD = ["{{{", "}}}", "((((", "))))", "^^^", "___", "x/", "/x", "|||", "&#%$~", "\"'`", "sum", "int", "( )/( )", "int( ,  , dx)", "lim(x-> , )", "∫x dx", "", "   ", "a//b", "((a)/(b))^", "1,000", "이차방정식 근의 공식", "x^", "sqrt", "root(", "vec()", "√", "!", "°C 25"];
+    const r = await page.evaluate(([table, weird]) => {
+      const T = RN._test.editor;
+      const wrong = [], bad = [];
+      const renders = (l) => { try { katex.renderToString(l, { output: "mathml", throwOnError: true }); return true; } catch (e) { return e.message; } };
+      for (const [inp, want] of table) {
+        const got = T.easyToLatex(inp);
+        if (got !== want) wrong.push([inp, got, want]);
+        const ok = renders(got); if (ok !== true) bad.push([inp, got, ok]);
+      }
+      for (const inp of weird) {
+        let got;
+        try { got = T.easyToLatex(inp); } catch (e) { bad.push([inp, "throw", String(e)]); continue; }
+        if (typeof got !== "string") { bad.push([inp, got, "not string"]); continue; }
+        const ok = got ? renders(got) : true; if (ok !== true) bad.push([inp, got, ok]);
+      }
+      // 저장된 LaTeX → 쉬운 표기 (다시 열 때)
+      const back = ["\\frac{x+1}{x-1}", "\\sqrt{x}", "\\alpha + \\beta", "\\begin{pmatrix} a \\end{pmatrix}"].map((l) => T.latexToEasy(l));
+      return { wrong, bad, back };
+    }, [TABLE, WEIRD]);
+    assert(!r.wrong.length, "변환 다름:\n" + r.wrong.map((w) => JSON.stringify(w)).join("\n"));
+    assert(!r.bad.length, "KaTeX 오류/예외:\n" + r.bad.map((w) => JSON.stringify(w)).join("\n"));
+    assert(r.back[0] === "(x+1)/(x-1)" && r.back[1] === "sqrt(x)" && r.back[2] === "alpha + beta" && r.back[3] === null, "latexToEasy: " + JSON.stringify(r.back));
+  });
+
+  const mathOpen = (p) => p.waitForSelector("#math-dlg[open]");
+  const mathClosed = (p) => p.waitForFunction(() => !document.querySelector("#math-dlg"));
+
+  await test("수식 입력 창: Ctrl+Shift+E → 분수 버튼(첫 괄호에 커서) → 미리보기·LaTeX 보기 → 넣기(글 안) → 문서에 수식 노드, 초점은 본문", async () => {
+    await freshDoc(page, projectId, { blocks: [P("a", "속도는 이다")] }, "수식 창");
+    await selectText(page, [0, 4], [0, 4]);
+    await page.keyboard.press("Control+Shift+E");
+    await mathOpen(page);
+    assert(await page.evaluate(() => document.activeElement.id === "math-easy"), "입력란에 초점");
+    assert(await page.isChecked("#math-mode-inline"), "글 중간이면 '글 안에 넣기'가 기본");
+    await page.click("#math-tpls button[aria-label='분수']");
+    const st = await page.$eval("#math-easy", (e) => [e.value, e.selectionStart, e.selectionEnd]);
+    assert(st[0] === "( )/( )" && st[1] === 1 && st[2] === 2, "분수 틀과 첫 괄호 커서: " + JSON.stringify(st));
+    await page.keyboard.type("x+1");
+    assert((await page.inputValue("#math-easy")) === "(x+1)/( )", "첫 괄호에 들어감");
+    await page.fill("#math-easy", "(x+1)/(x-1)");
+    await page.waitForSelector("#math-preview math mfrac");
+    assert(!(await page.isVisible("#math-latex")), "LaTeX는 접혀 있음");
+    await page.click("#math-latex-more summary");
+    assert((await page.inputValue("#math-latex")) === "\\frac{x+1}{x-1}", "변환된 LaTeX");
+    assert(await page.isHidden("#math-hint"), "오류 안내 없음");
+    // 선택한 글자를 감싸기
+    await page.fill("#math-easy", "ab");
+    await page.focus("#math-easy");
+    await page.keyboard.press("Control+a");
+    await page.click("#math-tpls button[aria-label='제곱근']");
+    assert((await page.inputValue("#math-easy")) === "sqrt(ab)", "선택 감싸기: " + (await page.inputValue("#math-easy")));
+    // 도구 모음은 화살표로 이동
+    await page.focus("#math-tpls button[tabindex='0']");
+    await page.keyboard.press("ArrowRight");
+    assert(await page.evaluate(() => document.activeElement.getAttribute("aria-label") === "제곱"), "→ 다음 버튼");
+    await page.fill("#math-easy", "(x+1)/(x-1)");
+    await page.focus("#math-easy");
+    await page.keyboard.press("Enter");
+    await mathClosed(page);
+    const b = (await blocks(page))[0];
+    assert(textOf(b) === "속도는 ¤이다" && b.content.find((n) => n.t === "math").latex === "\\frac{x+1}{x-1}", "인라인 수식: " + JSON.stringify(b));
+    assert(await page.evaluate(() => document.activeElement.id === "ed-blocks"), "초점이 본문으로");
+    await page.waitForSelector(".rn-im math");
+  });
+
+  await test("수식 입력 창: 기존 인라인 수식 눌러 고치기(쉬운 표기로 열림), Esc로 닫기·초점 복귀, LaTeX 직접 고치기 우선, 이해 못한 부분 안내", async () => {
+    await page.click(".rn-im");
+    await mathOpen(page);
+    assert((await page.textContent("#math-dlg-title")) === "수식 고치기", "제목");
+    assert((await page.inputValue("#math-easy")) === "(x+1)/(x-1)", "쉬운 표기로 열림: " + (await page.inputValue("#math-easy")));
+    await page.keyboard.press("Escape");
+    await mathClosed(page);
+    assert(await page.evaluate(() => document.activeElement.id === "ed-blocks"), "Esc 뒤 초점 본문");
+    await page.dblclick(".rn-im");
+    await mathOpen(page);
+    await page.fill("#math-easy", "(x+1)/(x+2)");
+    await page.click("#math-insert");
+    await mathClosed(page);
+    let ms = (await blocks(page))[0].content.filter((n) => n.t === "math");
+    assert(ms.length === 1 && ms[0].latex === "\\frac{x+1}{x+2}", "고침: " + JSON.stringify(ms));
+    // LaTeX 직접 고치기
+    await page.click(".rn-im");
+    await mathOpen(page);
+    await page.click("#math-latex-more summary");
+    await page.fill("#math-latex", "\\frac{1}{");
+    await page.waitForSelector("#math-hint:not([hidden])");
+    assert(/이해하지 못했어요/.test(await page.textContent("#math-hint")), "안내 한 줄");
+    await page.fill("#math-latex", "x^{3}");
+    assert(await page.isHidden("#math-hint"), "고치면 안내 사라짐");
+    await page.click("#math-insert");
+    await mathClosed(page);
+    ms = (await blocks(page))[0].content.filter((n) => n.t === "math");
+    assert(ms[0].latex === "x^{3}", "LaTeX가 우선: " + JSON.stringify(ms));
+  });
+
+  await test("수식 입력 창: 빈 문단이면 '한 줄로 넣기'(번호), 블록 수식 다시 열기·Esc, '/수식'+Enter로 열기", async () => {
+    await lastPara(page).click();
+    await page.keyboard.press("End");
+    await page.keyboard.press("Enter");
+    await insertMenu(page, "tb-math");
+    await mathOpen(page);
+    assert(await page.isChecked("#math-mode-display"), "빈 문단이면 블록이 기본");
+    await page.keyboard.type("sum(i=1, n, a_i)");
+    await page.keyboard.press("Enter");
+    await mathClosed(page);
+    let bl = await blocks(page);
+    const m = bl.find((b) => b.type === "math");
+    assert(m && m.latex === "\\sum_{i=1}^{n} a_i", "블록 수식: " + JSON.stringify(bl));
+    assert((await page.$eval(".rn-blk-math .rn-eqno", (e) => e.textContent)) === "(1)", "번호");
+    await page.click(".rn-blk-math .rn-math-view");
+    await mathOpen(page);
+    assert((await page.inputValue("#math-easy")) === "sum_(i=1)^n a_i", "블록 수식 쉬운 표기: " + (await page.inputValue("#math-easy")));
+    assert(await page.isHidden(".rn-mathdlg-mode"), "고칠 때는 넣는 방식 숨김");
+    await page.keyboard.press("Escape");
+    await mathClosed(page);
+    assert(await page.evaluate(() => document.activeElement.classList.contains("rn-blk-math")), "Esc 뒤 초점이 그 수식으로");
+    await page.keyboard.press("Enter");
+    await mathOpen(page);
+    await page.click("#math-cancel");
+    await mathClosed(page);
+    // /수식 + Enter
+    await lastPara(page).click();
+    await page.keyboard.press("End");
+    await page.keyboard.type("/수식");
+    await page.keyboard.press("Enter");
+    await mathOpen(page);
+    await page.keyboard.type("1/2 m v^2");
+    await page.keyboard.press("Enter");
+    await mathClosed(page);
+    bl = await blocks(page);
+    assert(bl.filter((b) => b.type === "math").map((b) => b.latex).join("|") === "\\sum_{i=1}^{n} a_i|\\frac{1}{2} m v^2", "/수식으로 넣음: " + JSON.stringify(bl.map((b) => b.type + ":" + (b.latex || textOf(b)))));
+    assert(!bl.some((b) => b.content && /\/수식/.test(textOf(b))), "/수식 글자는 지워짐");
+  });
+
+  await test("수식 입력 창: 말로 설명해서 만들기(quick, 누를 때만 호출, 넣기 전에는 문서 그대로), ?nosample=1이면 버튼 없음", async () => {
+    await page.evaluate(() => { window.__aiCalls = []; window.__mockSample = async (text, opts) => { window.__aiCalls.push({ text, tier: opts && opts.modelTier }); return "```latex\n$$x = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}$$\n```"; }; });
+    const before = JSON.stringify(await blocks(page));
+    await lastPara(page).click();
+    await page.keyboard.press("Control+Shift+E");
+    await mathOpen(page);
+    assert((await page.evaluate(() => window.__aiCalls.length)) === 0, "열기만 해서는 호출 안 함");
+    await page.click("#math-ai-toggle");
+    await page.fill("#math-ai-q", "이차방정식 근의 공식");
+    await page.click("#math-ai-go");
+    await page.waitForFunction(() => /만들었어요/.test(document.querySelector("#math-ai-status").textContent));
+    const calls = await page.evaluate(() => window.__aiCalls);
+    assert(calls.length === 1 && calls[0].tier === "quick" && /근의 공식/.test(calls[0].text), "sample 호출: " + JSON.stringify(calls));
+    assert((await page.inputValue("#math-easy")) === "x = (-b +- sqrt(b^2-4ac))/2a", "쉬운 표기로 채움: " + (await page.inputValue("#math-easy")));
+    await page.waitForSelector("#math-preview math mfrac");
+    assert(JSON.stringify(await blocks(page)) === before, "넣기 전에는 문서 그대로");
+    // 오류 코드: 한도·거절
+    await page.evaluate(() => { window.__mockSample = async () => { throw { code: "rate_limited", message: "x" }; }; });
+    await page.fill("#math-ai-q", "다른 수식");
+    await page.click("#math-ai-go");
+    await page.waitForFunction(() => /잠시 뒤/.test(document.querySelector("#math-ai-status").textContent));
+    assert(await page.isVisible("#math-ai-toggle"), "rate_limited는 버튼 유지");
+    await page.click("#math-insert");
+    await mathClosed(page);
+    const mm = (await blocks(page)).filter((b) => b.type === "math").pop();
+    assert(mm.latex === "x = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}", "넣은 수식: " + mm.latex);
+    // not_granted → 버튼 숨김
+    await page.evaluate(() => { window.__mockSample = async () => { throw { code: "not_granted", message: "x" }; }; });
+    await page.keyboard.press("Control+Shift+E");
+    await mathOpen(page);
+    await page.click("#math-ai-toggle");
+    await page.fill("#math-ai-q", "원의 넓이");
+    await page.click("#math-ai-go");
+    await page.waitForFunction(() => document.querySelector("#math-ai-toggle").hidden);
+    await page.keyboard.press("Escape");
+    await mathClosed(page);
+    await page.evaluate(() => { window.__mockSample = null; });
+    // ?nosample=1
+    const ctxN = await setupContext();
+    const pN = await newPage(ctxN, "?nosample=1");
+    await pN.evaluate((s) => window.__mockDb.seed(s), await store(page));
+    await openEditor(pN, projectId, docId);
+    await pN.click("#ed-blocks .rn-slot");
+    await pN.keyboard.press("Control+Shift+E");
+    await mathOpen(pN);
+    assert(!(await pN.$("#math-ai-toggle")), "sample이 없으면 버튼 없음");
+    await ctxN.close();
+  });
+
+  await test("수식 입력 창: 휴대폰 폭(400px)에서 가로 스크롤 없이, 더 보기 펼쳐도 화면 안", async () => {
+    const ctx4 = await setupContext({ width: 400, height: 800 });
+    const p = await newPage(ctx4);
+    await p.evaluate((s) => window.__mockDb.seed(s), await store(page));
+    await openEditor(p, projectId, docId);
+    await p.click("#ed-blocks .rn-slot");
+    await p.keyboard.press("Control+Shift+E");
+    await mathOpen(p);
+    await p.click("#math-more");
+    await p.waitForSelector("#math-more-row:not([hidden])");
+    await p.fill("#math-easy", "int(0, 1, (x^2 + 2x + 1)/(sqrt(x) + 1) dx) + sum(k=1, inf, 1/k^2)");
+    await p.click("#math-latex-more summary");
+    const r = await p.evaluate(() => {
+      const d = document.getElementById("math-dlg"), b = d.getBoundingClientRect();
+      return { left: b.left, right: b.right, vw: window.innerWidth, sw: d.scrollWidth, cw: d.clientWidth, doc: document.documentElement.scrollWidth };
+    });
+    assert(r.left >= 0 && r.right <= r.vw && r.sw <= r.cw && r.doc <= r.vw, "화면 안: " + JSON.stringify(r));
+    await p.keyboard.press("Escape");
+    await ctx4.close();
+    await openEditor(page, projectId, docId);
+  });
+
+  await test("Markdown 가져오기의 그림: data: 래스터 → figure(alt만, 캡션 없음), 위험한 주소는 글자, 크기 제한이면 생략", async () => {
+    const r = await page.evaluate(async (pid) => {
+      const png = (w, h, noise) => { const c = document.createElement("canvas"); c.width = w; c.height = h; const x = c.getContext("2d");
+        if (noise) { const im = x.createImageData(w, h); for (let i = 0; i < im.data.length; i++) im.data[i] = (Math.random() * 256) | 0; x.putImageData(im, 0, 0); } else { x.fillStyle = "#c33"; x.fillRect(0, 0, w, h); }
+        return c.toDataURL("image/png"); };
+      const small = png(40, 30), jpg = (() => { const c = document.createElement("canvas"); c.width = 20; c.height = 20; return c.toDataURL("image/jpeg"); })();
+      const md = `# 결과\n\n첫 문단\n\n![실험 장치](${small})\n\n둘째 문단\n\n![](${jpg})\n\n![나쁜 그림](javascript:alert(1))\n\n![원격](https://evil.example/x.png)\n\n![svg](data:image/svg+xml;base64,PHN2Zy8+)\n\n끝`;
+      const id1 = await RN.docs.createDoc(pid, { title: "그림 가져오기", markdown: md, reason: "IMPORT" });
+      const info1 = RN.docs.lastImportInfo;
+      const d1 = await RN.docs.getDoc(id1);
+      // 큰 그림 여러 개(잡음이라 잘 안 줄어듦) → 크기 제한
+      const big = png(700, 500, true);
+      const md2 = ["시작", ...Array.from({ length: 6 }, (_, i) => `![큰 그림 ${i + 1}](${big})`), "끝"].join("\n\n");
+      const id2 = await RN.docs.createDoc(pid, { title: "큰 그림", markdown: md2 });
+      const info2 = RN.docs.lastImportInfo;
+      const d2 = await RN.docs.getDoc(id2);
+      return { info1, info2, b1: d1.content.blocks, b2: d2.content.blocks, bytes2: new TextEncoder().encode(JSON.stringify(d2)).length, bigLen: big.length };
+    }, projectId);
+    const figs = r.b1.filter((b) => b.type === "figure");
+    assert(figs.length === 2 && figs[0].alt === "실험 장치" && figs[1].alt === "" && /^data:image\/png;base64,/.test(figs[0].src) && /^data:image\/jpeg;base64,/.test(figs[1].src), "figure 2개: " + JSON.stringify(r.b1.map((b) => b.type + ":" + (b.alt ?? textOf(b)))));
+    assert(!r.b1.some((b) => b.type === "caption"), "캡션 블록 없음");
+    const texts = r.b1.filter((b) => b.type === "paragraph").map(textOf);
+    assert(texts.includes("(그림: 나쁜 그림)") && texts.includes("(그림: 원격)") && texts.includes("(그림: svg)"), "위험한 주소는 글자: " + texts);
+    assert(!JSON.stringify(r.b1).includes("javascript:") && !JSON.stringify(r.b1).includes("evil.example"), "주소가 남지 않음");
+    assert(r.info1.imagesKept === 2 && r.info1.imagesSkipped === 0, "info1 " + JSON.stringify(r.info1));
+    const kept2 = r.b2.filter((b) => b.type === "figure").length, skippedText = r.b2.filter((b) => b.type === "paragraph" && textOf(b) === "(그림 생략: 문서 크기 제한)").length;
+    assert(r.info2.imagesSkipped > 0 && r.info2.imagesKept === kept2 && skippedText === r.info2.imagesSkipped && kept2 + skippedText === 6, "생략: " + JSON.stringify([r.info2, kept2, skippedText, r.bigLen]));
+    assert(r.bytes2 <= 256 * 1024, "256KiB 이하: " + r.bytes2);
+    assert(r.b2.every((b) => b.type !== "figure" || b.src.length <= 180000), "그림이 줄어 있음");
   });
 
   await test("서식 패널: 자주 쓰는 항목만 먼저, 나머지는 '자세히' — 종이에 즉시 반영, 프리셋·글꼴 대체", async () => {

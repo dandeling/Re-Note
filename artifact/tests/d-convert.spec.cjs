@@ -9,12 +9,15 @@
 // hwp5txt는 sample.hwp에서 실패하고 표 글자를 "<표>"로만 내므로 쓰지 않는다.
 // hwp5proc 위치: 환경 변수 HWP5PROC, 없으면 아래 기본 경로. 없으면 이 대조는 내장 기준값(일부 글자)으로 대신한다.
 // 제3자 샘플: /home/user/tests/fixtures/hwp/third-party/*.hwp (없으면 /home/user/worker/spike/fetch-samples.sh)
+// 그림 대조: pyhwp의 DocInfo BinData(id → 저장 번호·확장자)와 본문 그림 개체(bindata_id)로 그림이 놓인 문단을 찾고,
+//   `hwp5proc cat`으로 꺼낸 BinData 스트림의 길이·SHA-256과 파서가 꺼낸 그림 바이트를 비교한다(pyhwp 없으면 내장 기준값).
 const { chromium } = require("playwright");
 const { spawn, spawnSync } = require("node:child_process");
 const path = require("node:path");
 const fs = require("node:fs");
 const zlib = require("node:zlib");
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 
 const PORT = 4105;
 const ORIGIN = `http://localhost:${PORT}`;
@@ -187,7 +190,7 @@ function buildZip(files) {
   const locals = [], centrals = [];
   let off = 0;
   for (const f of files) {
-    const name = Buffer.from(f.name, "utf8"), raw = Buffer.from(f.data, "utf8");
+    const name = Buffer.from(f.name, "utf8"), raw = Buffer.isBuffer(f.data) ? f.data : Buffer.from(f.data, "utf8");
     const method = f.store ? 0 : 8, data = f.store ? raw : zlib.deflateRawSync(raw), crc = crc32(raw);
     const lh = Buffer.alloc(30);
     lh.writeUInt32LE(0x04034b50, 0); lh.writeUInt16LE(20, 4); lh.writeUInt16LE(method, 8); lh.writeUInt32LE(crc, 14); lh.writeUInt32LE(data.length, 18); lh.writeUInt32LE(raw.length, 22); lh.writeUInt16LE(name.length, 26);
@@ -226,6 +229,137 @@ function buildHwpx() {
 }
 
 // =====================================================================
+// 그림이 든 합성 파일
+// =====================================================================
+const sha256 = (b) => crypto.createHash("sha256").update(b).digest("hex");
+/** PNG 만들기: pixel(x, y) → [r, g, b, a] */
+function makePng(w, hgt, pixel, alpha = true) {
+  const bpp = alpha ? 4 : 3;
+  const raw = Buffer.alloc((w * bpp + 1) * hgt);
+  for (let y = 0; y < hgt; y++) {
+    const row = y * (w * bpp + 1);
+    for (let x = 0; x < w; x++) { const px = pixel(x, y); for (let k = 0; k < bpp; k++) raw[row + 1 + x * bpp + k] = px[k]; }
+  }
+  const chunk = (type, data) => { const t = Buffer.from(type, "latin1"); const len = Buffer.alloc(4); len.writeUInt32BE(data.length); const c = Buffer.alloc(4); c.writeUInt32BE(crc32(Buffer.concat([t, data]))); return Buffer.concat([len, t, data, c]); };
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(hgt, 4); ihdr[8] = 8; ihdr[9] = alpha ? 6 : 2;
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr), chunk("IDAT", zlib.deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
+}
+const TINY_PNG = makePng(4, 3, (x, y) => [x * 60, y * 80, 200, 255]);
+/** 2×2 24비트 BMP */
+function makeBmp() {
+  const row = Buffer.from([0, 0, 255, 0, 255, 0, 0, 0]); // 픽셀 2개 + 줄 맞춤 2바이트
+  const pixels = Buffer.concat([row, row]);
+  const hd = Buffer.alloc(54);
+  hd.write("BM", 0, "latin1"); hd.writeUInt32LE(54 + pixels.length, 2); hd.writeUInt32LE(54, 10);
+  hd.writeUInt32LE(40, 14); hd.writeInt32LE(2, 18); hd.writeInt32LE(2, 22); hd.writeUInt16LE(1, 26); hd.writeUInt16LE(24, 28); hd.writeUInt32LE(pixels.length, 34);
+  return Buffer.concat([hd, pixels]);
+}
+const FAKE_WMF = Buffer.concat([Buffer.from([0xd7, 0xcd, 0xc6, 0x9a]), Buffer.alloc(60, 1)]);
+const FAKE_SVG = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
+/** 그림 개체 레코드(HWPTAG_SHAPE_COMPONENT_PICTURE): 71번째 바이트에 BinData id */
+const picRec = (level, binId) => { const d = Buffer.alloc(80); d.writeUInt16LE(binId, 71); return rec(85, level, d); };
+const gsoPicture = (level, binId) => ctrlHeader(level, "gso ", [rec(76, level + 1, Buffer.alloc(120)), picRec(level + 2, binId)]);
+/** HWPTAG_BIN_DATA: 포함(1) + 압축 방식(0 문서 설정, 1 압축, 2 안 함) + 저장 번호 + 확장자 */
+const binDataRec = (storageId, ext, comp = 0) => rec(18, 0, Buffer.concat([le16(1 | (comp << 4)), le16(storageId), bstr(ext)]));
+/**
+ * 합성 HWP(압축): 문단 "그림 앞 문단" → 그림(PNG, 압축) → "그림 뒤 문단" → 표 칸 안 그림(BMP, 압축 안 함) → WMF 그림 → 같은 PNG를 한 번 더.
+ * BIN0009.png는 DocInfo에 있지만 어떤 그림 개체도 가리키지 않는다(넣지 않아야 한다).
+ */
+function buildHwpImages() {
+  const hancom = (b) => Buffer.concat([zlib.deflateRawSync(b), le32(crc32(b)), le32(b.length)]);
+  const info = Buffer.concat([docInfo(), binDataRec(1, "png", 0), binDataRec(2, "bmp", 2), binDataRec(3, "wmf", 0), binDataRec(9, "png", 0)]);
+  const body = Buffer.concat([
+    paragraph(0, ["그림 앞 문단"]),
+    paragraph(0, ["그림 설명 글", { ctrl: 11, id: "gso " }], { ctrls: [gsoPicture(1, 1)] }),
+    paragraph(0, ["그림 뒤 문단"]),
+    paragraph(0, [{ ctrl: 11, id: "tbl " }], { ctrls: [ctrlHeader(1, "tbl ", [
+      rec(77, 2, Buffer.concat([le32(0), le16(1), le16(1), Buffer.alloc(20)])),
+      listHeader(2, 1, Buffer.concat([le16(0), le16(0), le16(1), le16(1), Buffer.alloc(22)])),
+      paragraph(2, ["칸 글자", { ctrl: 11, id: "gso " }], { ctrls: [gsoPicture(3, 2)] }),
+    ])] }),
+    paragraph(0, ["표 뒤 문단"]),
+    paragraph(0, [{ ctrl: 11, id: "gso " }], { ctrls: [gsoPicture(1, 3)] }),
+    paragraph(0, [{ ctrl: 11, id: "gso " }], { ctrls: [gsoPicture(1, 1)] }),
+    paragraph(0, ["끝 문단"]),
+  ]);
+  return buildCfb([
+    { path: "FileHeader", data: fileHeader(1) },
+    { path: "DocInfo", data: hancom(info) },
+    { path: "BodyText/Section0", data: hancom(body) },
+    { path: "BinData/BIN0001.png", data: hancom(TINY_PNG) },
+    { path: "BinData/BIN0002.bmp", data: makeBmp() },
+    { path: "BinData/BIN0003.wmf", data: hancom(FAKE_WMF) },
+    { path: "BinData/BIN0009.png", data: hancom(TINY_PNG) },
+  ]);
+}
+const HX_NS = 'xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph" xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section" xmlns:hc="http://www.hancom.co.kr/hwpml/2011/core"';
+/** 합성 HWPX: items = [{ id, path, data, mediaType }], body = section0의 문단 XML */
+function buildHwpxWith(items, body) {
+  const hpf = `<?xml version="1.0" encoding="UTF-8"?><opf:package xmlns:opf="http://www.idpf.org/2007/opf/"><opf:manifest><opf:item id="header" href="Contents/header.xml" media-type="application/xml"/><opf:item id="section0" href="Contents/section0.xml" media-type="application/xml"/>${items.map((it) => `<opf:item id="${it.id}" href="${it.path}" media-type="${it.mediaType || "image/png"}" isEmbeded="1"/>`).join("")}</opf:manifest></opf:package>`;
+  return buildZip([
+    { name: "mimetype", data: "application/hwp+zip", store: true },
+    { name: "Contents/content.hpf", data: hpf },
+    { name: "Contents/section0.xml", data: `<?xml version="1.0" encoding="UTF-8"?><hs:sec ${HX_NS}>${body}</hs:sec>` },
+    ...items.map((it) => ({ name: it.path, data: it.data, store: it.store })),
+  ]);
+}
+const hxP = (inner) => `<hp:p><hp:run>${inner}</hp:run></hp:p>`;
+const hxPic = (id) => `<hp:pic id="${id}"><hp:offset x="0" y="0"/><hp:imgRect/><hc:img binaryItemIDRef="${id}" bright="0" contrast="0" effect="REAL_PIC" alpha="0"/></hp:pic>`;
+function buildHwpxImages() {
+  return buildHwpxWith([
+    { id: "image1", path: "BinData/image1.png", data: TINY_PNG },
+    { id: "image2", path: "BinData/image2.wmf", data: FAKE_WMF, mediaType: "image/x-wmf" },
+    { id: "image3", path: "BinData/image3.png", data: TINY_PNG, store: true },
+    { id: "image4", path: "BinData/image4.png", data: FAKE_SVG },
+    { id: "image5", path: "BinData/image5.png", data: TINY_PNG },
+  ], [
+    hxP("<hp:t>그림 앞 문단</hp:t>"),
+    hxP(hxPic("image1")),
+    hxP("<hp:t>그림 뒤 문단</hp:t>"),
+    hxP('<hp:rect><hc:fillBrush><hc:imgBrush mode="TILE"><hc:img binaryItemIDRef="image3"/></hc:imgBrush></hc:fillBrush></hp:rect>'), // 배경 그림: 넣지 않는다
+    hxP(hxPic("image2")), // WMF: 지원 안 함
+    hxP(hxPic("image4")), // 확장자는 png지만 SVG: 절대 그림으로 쓰지 않는다
+    hxP("<hp:t>끝 문단</hp:t>"),
+  ].join(""));
+}
+/** 줄이기 확인용: 큰 잡음 사진(불투명) + 큰 투명 그러데이션 PNG */
+function buildHwpxBig() {
+  const noise = crypto.randomBytes(1600 * 1000 * 3);
+  const photo = makePng(1600, 1000, (x, y) => { const i = (y * 1600 + x) * 3; return [noise[i], noise[i + 1], noise[i + 2]]; }, false);
+  const clear = makePng(1000, 1000, (x, y) => [x % 256, y % 256, 120, Math.round((x / 1000) * 255)]);
+  return buildHwpxWith([
+    { id: "image1", path: "BinData/image1.png", data: photo, store: true },
+    { id: "image2", path: "BinData/image2.png", data: clear, store: true },
+    { id: "image3", path: "BinData/image3.wmf", data: FAKE_WMF },
+  ], [hxP("<hp:t>큰 그림 앞</hp:t>"), hxP(hxPic("image1")), hxP("<hp:t>투명 그림 앞</hp:t>"), hxP(hxPic("image2")), hxP(hxPic("image3")), hxP("<hp:t>끝</hp:t>")].join(""));
+}
+/** 그림 블록을 페이지 안에서 요약(바이트는 넘기지 않는다): 순서·글자 블록·그림의 길이·SHA-256·머리 형식 */
+async function parseImagesIn(page, bytes) {
+  return page.evaluate(async (b64) => {
+    const u = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    try {
+      const res = await RN._convert.parseAny(u);
+      const hex = async (b) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", b))].map((x) => x.toString(16).padStart(2, "0")).join("");
+      const flow = [];
+      for (const b of res.blocks) {
+        if (b.type === "image") {
+          const info = RN._convert.imageInfo(b.bytes);
+          flow.push({ type: "image", n: b.n, name: b.name, mime: b.mime, source: b.source, width: b.width, height: b.height, length: b.bytes.length, sha: await hex(b.bytes), kind: info.kind, supported: info.supported, isU8: b.bytes instanceof Uint8Array });
+        } else flow.push({ type: b.type, text: b.type === "table" ? b.cells.map((c) => c.text).join(" ") : b.text });
+      }
+      return { ok: true, flow, notes: res.notes, stats: res.stats, md: RN._convert.toMarkdown(res.blocks), mdText: RN._convert.toMarkdown(res.blocks, { images: "placeholder" }) };
+    } catch (e) { return { ok: false, code: e && e.code, message: e && e.message, stack: e && e.stack }; }
+  }, Buffer.from(bytes).toString("base64"));
+}
+/** 그림 바로 앞·뒤의 글자 블록 */
+function around(flow, idx) {
+  let before = null, after = null;
+  for (let i = idx - 1; i >= 0; i--) if (flow[i].type !== "image") { before = flow[i].text; break; }
+  for (let i = idx + 1; i < flow.length; i++) if (flow[i].type !== "image") { after = flow[i].text; break; }
+  return { before, after };
+}
+
+// =====================================================================
 // pyhwp 기준값
 // =====================================================================
 function pyhwpReference(file) {
@@ -256,6 +390,46 @@ function pyhwpReference(file) {
   }
   return { chunks, tables: tables.map(({ rows, cols, cells }) => ({ rows, cols, cells })) };
 }
+/** pyhwp로 그림 기준값: 그림 개체마다 { stream, length, sha, before(그 그림이 든 최상위 문단까지의 마지막 글자), after(다음 최상위 문단 글자) } */
+function pyhwpImages(file) {
+  if (!fs.existsSync(HWP5PROC)) return null;
+  const run = (args, enc = "utf8") => { const r = spawnSync(HWP5PROC, args, { encoding: enc, maxBuffer: 256 * 1024 * 1024 }); return r.status === 0 ? r.stdout : null; };
+  const di = run(["models", "--json", file, "DocInfo"]);
+  const ls = run(["ls", file]);
+  if (!di || !ls) return null;
+  const bins = JSON.parse(di).filter((m) => m.tagname === "HWPTAG_BIN_DATA").map((m) => m.content.bindata || {});
+  const out = [];
+  for (const sec of ls.split("\n").map((l) => l.trim()).filter((l) => /^BodyText\/Section\d+$/.test(l))) {
+    const models = JSON.parse(run(["models", "--json", file, sec]));
+    const top = []; // 최상위 문단 글자
+    const pics = [];
+    for (const m of models) {
+      if (m.tagname === "HWPTAG_PARA_HEADER" && m.level === 0) top.push("");
+      if (m.type === "ParaText" && m.level === 1 && top.length) top[top.length - 1] += m.content.chunks.map((c) => c[1]).filter((x) => typeof x === "string").join("");
+      if (m.tagname === "HWPTAG_SHAPE_COMPONENT_PICTURE") pics.push({ para: top.length - 1, id: m.content.picture.bindata_id });
+    }
+    for (const p of pics) {
+      const b = bins[p.id - 1];
+      const stream = `BinData/BIN${b.storage_id.toString(16).toUpperCase().padStart(4, "0")}.${b.ext}`;
+      const data = run(["cat", file, stream], "buffer");
+      let before = null, after = null;
+      for (let i = p.para; i >= 0; i--) if (top[i].trim()) { before = top[i]; break; }
+      for (let i = p.para + 1; i < top.length; i++) if (top[i].trim()) { after = top[i]; break; }
+      out.push({ stream, length: data.length, sha: sha256(data), before, after });
+    }
+  }
+  return out;
+}
+const JPG_5017 = { stream: "BinData/BIN0002.jpg", length: 15895, sha: "ec8fe383b6e15ed56abd24a8b8bc112317bd770c2de2fc770081a160d652ab67" };
+const PNG_5017 = { stream: "BinData/BIN0003.png", length: 989, sha: "175ef81be06278b02193605bedee6ff5fabe62b3265624cff03e42be97d19d59" };
+const BUILTIN_IMAGES = {
+  "sample-5017.hwp": [
+    { ...JPG_5017, before: "본 문서는 먼저", after: "미주입니다." },
+    { ...PNG_5017, before: "다음 페이지", after: null },
+  ],
+  "shapepict-scaled.hwp": [{ ...JPG_5017, before: null, after: null }, { ...JPG_5017, before: null, after: null }],
+};
+
 // pyhwp가 없을 때 쓰는 내장 기준값(일부 글자와 표 모양)
 const BUILTIN = {
   "sample.hwp": { chunks: ["음향 블랙홀 진동 감쇠 실험 보고서", "알루미늄 보의 끝단 두께를 점차 줄여 진동 에너지를 모았다.", "표 아래 문단: 감쇠율은 세 번 측정한 평균이다."], tables: [[3, 2]] },
@@ -483,12 +657,94 @@ const cellAt = (t, row, col) => (t.cells.find((c) => c.row === row && c.col === 
       });
     }
 
+    console.log("그림 추출");
+    for (const name of ["sample-5017.hwp", "shapepict-scaled.hwp"]) {
+      const file = path.join(THIRD, name);
+      if (!fs.existsSync(file)) { console.log(`       (${name} 없음 — 건너뜀)`); continue; }
+      await test(`${name}: 그림 수·형식·바이트(길이·SHA-256)·문서 속 자리`, async () => {
+        const r = await parseImagesIn(page, fs.readFileSync(file));
+        assert.ok(r.ok, r.message);
+        let ref = pyhwpImages(file), source = "pyhwp";
+        if (!ref) { ref = BUILTIN_IMAGES[name]; source = "내장"; }
+        const imgs = r.flow.map((b, i) => [b, i]).filter(([b]) => b.type === "image");
+        assert.equal(imgs.length, ref.length, "그림 수");
+        assert.equal(r.stats.images, ref.length);
+        imgs.forEach(([b, i], k) => {
+          const want = ref[k];
+          assert.ok(b.isU8 && b.supported && ["png", "jpeg", "gif", "webp"].includes(b.kind), `그림 ${k + 1} 머리 바이트 ${b.kind}`);
+          assert.equal(b.mime, { png: "image/png", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp" }[b.kind]);
+          assert.equal(b.source, want.stream, `그림 ${k + 1} 스트림`);
+          assert.equal(b.length, want.length, `그림 ${k + 1} 길이`);
+          assert.equal(b.sha, want.sha, `그림 ${k + 1} SHA-256`);
+          assert.equal(b.n, k + 1); assert.equal(b.name, `그림 ${k + 1}.${b.kind === "jpeg" ? "jpg" : b.kind}`);
+          assert.ok(b.width > 0 && b.height > 0, "픽셀 크기");
+          const { before, after } = around(r.flow, i);
+          if (want.before) assert.ok(before && squash(before).includes(squash(want.before)), `그림 ${k + 1} 앞 문단: ${before}`);
+          if (want.after) assert.ok(after && squash(after).startsWith(squash(want.after)), `그림 ${k + 1} 뒤 문단: ${after}`);
+        });
+        assert.ok(!r.notes.some((n) => /그림/.test(n)), r.notes.join(" / "));
+        const lines = r.md.split("\n").filter((l) => l.startsWith("!["));
+        assert.equal(lines.length, ref.length);
+        assert.match(lines[0], /^!\[그림 1\]\(data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+\)$/);
+        assert.ok(!r.mdText.includes("data:") && r.mdText.includes("(그림 1)"), "텍스트로 저장에는 자리 표시만");
+        console.log(`       [${source}] 그림 ${imgs.length}개: ${imgs.map(([b]) => `${b.source} ${b.mime} ${b.width}×${b.height} ${b.length}B`).join(", ")}`);
+      });
+    }
+    if (fs.existsSync(path.join(THIRD, "sample-5017.hwp"))) {
+      await test("sample-5017.hwp: 그림 개체가 가리키지 않는 BinData(BIN0002.png)는 넣지 않는다", async () => {
+        const r = await parseImagesIn(page, fs.readFileSync(path.join(THIRD, "sample-5017.hwp")));
+        assert.deepEqual(r.flow.filter((b) => b.type === "image").map((b) => b.source), ["BinData/BIN0002.jpg", "BinData/BIN0003.png"]);
+      });
+    }
+    await test("합성 HWP: 압축·비압축 BinData, 표 칸 안 그림, BMP→PNG, WMF 안내, 안 쓰는 BinData 제외, 같은 그림 두 번", async () => {
+      const r = await parseImagesIn(page, buildHwpImages());
+      assert.ok(r.ok, r.message + r.stack);
+      const f = r.flow;
+      const texts = f.map((b) => (b.type === "image" ? `[${b.source}]` : b.text));
+      assert.deepEqual(texts, ["그림 앞 문단", "그림 설명 글", "[BinData/BIN0001.png]", "그림 뒤 문단", "칸 글자", "[BinData/BIN0002.bmp]", "표 뒤 문단", "[BinData/BIN0001.png]", "끝 문단"]);
+      const imgs = f.filter((b) => b.type === "image");
+      assert.equal(imgs[0].sha, sha256(TINY_PNG)); assert.equal(imgs[0].width, 4); assert.equal(imgs[0].height, 3);
+      assert.equal(imgs[1].mime, "image/png"); assert.equal(imgs[1].kind, "png", "BMP는 PNG로 바뀐다"); assert.equal(imgs[1].width, 2);
+      assert.equal(imgs[2].sha, imgs[0].sha); assert.deepEqual(imgs.map((b) => b.n), [1, 2, 3]);
+      assert.ok(r.notes.includes("그림 1개는 형식(WMF)을 지원하지 않아 가져오지 않았어요."), r.notes.join(" / "));
+      // 기존 글자·표 결과는 그대로
+      const plain = await parseIn(page, buildHwp({ flags: 1 }), "parseHwp");
+      assert.ok(plain.ok && !plain.blocks.some((b) => b.type === "image"));
+    });
+    await test("합성 HWPX: content.hpf → BinData, 배경 그림 제외, WMF·SVG 거부", async () => {
+      const r = await parseImagesIn(page, buildHwpxImages());
+      assert.ok(r.ok, r.message + r.stack);
+      const texts = r.flow.map((b) => (b.type === "image" ? `[${b.source}]` : b.text));
+      assert.deepEqual(texts, ["그림 앞 문단", "[BinData/image1.png]", "그림 뒤 문단", "끝 문단"]);
+      const [img] = r.flow.filter((b) => b.type === "image");
+      assert.equal(img.sha, sha256(TINY_PNG)); assert.equal(img.mime, "image/png"); assert.equal(img.name, "그림 1.png");
+      assert.ok(r.notes.includes("그림 2개는 형식(WMF, SVG)을 지원하지 않아 가져오지 않았어요."), r.notes.join(" / "));
+      assert.ok(!r.md.includes("svg"), "SVG는 어디에도 넣지 않는다");
+      const kinds = await page.evaluate(([w, s]) => [RN._convert.imageInfo(Uint8Array.from(atob(w), (c) => c.charCodeAt(0))), RN._convert.imageInfo(Uint8Array.from(atob(s), (c) => c.charCodeAt(0)))].map((x) => [x.label, x.supported]), [FAKE_WMF.toString("base64"), FAKE_SVG.toString("base64")]);
+      assert.deepEqual(kinds, [["WMF", false], ["SVG", false]]);
+    });
+    await test("그림 수 제한: 200개까지만, 나머지는 안내", async () => {
+      const n = 205;
+      const items = Array.from({ length: n }, (_, i) => ({ id: "im" + i, path: `BinData/im${i}.png`, data: makePng(1, 1, () => [i % 256, 0, 0, 255]), store: true }));
+      const r = await parseImagesIn(page, buildHwpxWith(items, items.map((it) => hxP(hxPic(it.id))).join("")));
+      assert.ok(r.ok, r.message);
+      assert.equal(r.flow.filter((b) => b.type === "image").length, 200);
+      assert.ok(r.notes.some((x) => /^그림 5개는 .*200개, 60MB.*건너뛰었어요/.test(x)), r.notes.join(" / "));
+    });
+    await test("extractImages: 그림 블록만 문서 순서대로", async () => {
+      const r = await page.evaluate(async (b64) => {
+        const res = await RN._convert.extractImages(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
+        return res.images.map((b) => [b.type, b.n, b.mime, b.bytes.length]);
+      }, buildHwpImages().toString("base64"));
+      assert.deepEqual(r, [["image", 1, "image/png", TINY_PNG.length], ["image", 2, "image/png", r[1][3]], ["image", 3, "image/png", TINY_PNG.length]]);
+    });
+
     console.log("화면 convert");
     await test("처음 화면: 제목·한 줄 안내·파일 고르기만", async () => {
       await page.evaluate(() => RN.go("convert"));
       await page.waitForSelector("#convert-file");
       assert.equal(await page.locator("#rn-view h1").innerText(), "한글 파일 열기");
-      assert.equal(await page.locator("#convert-hint").innerText(), "글자와 표만 읽어 옵니다. 쪽 배치·글꼴·그림은 원본과 다릅니다.");
+      assert.equal(await page.locator("#convert-hint").innerText(), "글자·표·그림을 읽어 옵니다. 쪽 배치와 글꼴은 원본과 다릅니다.");
       assert.equal(await page.locator("#rn-view button").count(), 0, "파일을 열기 전에는 버튼이 없다");
       assert.equal(await page.locator('label[for="convert-file"]').count(), 1);
     });
@@ -515,6 +771,8 @@ const cellAt = (t, row, col) => (t.cells.find((c) => c.row === row && c.col === 
       const buttons = await page.locator("#rn-view button").allInnerTexts();
       assert.deepEqual(buttons, ["텍스트로 저장", "내 프로젝트로 가져오기"]);
       assert.equal(await page.locator("#convert-status").innerText(), "");
+      assert.equal(await page.locator("#convert-unsaved").innerText(), "아직 저장되지 않았어요. ‘내 프로젝트로 가져오기’를 누르면 문서로 저장되고, 그 뒤로는 자동 저장돼요.");
+      assert.equal(await page.locator("#convert-paper img").count(), 0);
     });
     await test("끌어다 놓기로 sample.hwpx 열기", async () => {
       const b64 = fs.readFileSync(path.join(HWP, "sample.hwpx")).toString("base64");
@@ -577,6 +835,90 @@ const cellAt = (t, row, col) => (t.cells.find((c) => c.row === row && c.col === 
       await page.evaluate(() => { RN.go = window.__realGo; });
     });
 
+    if (fs.existsSync(path.join(THIRD, "sample-5017.hwp"))) {
+      await test("sample-5017.hwp 열기 → 종이 위 그 자리에 그림, 요약 \"그림 2개\", 그림 저장 → downloads", async () => {
+        await page.setInputFiles("#convert-file", path.join(THIRD, "sample-5017.hwp"));
+        await page.waitForFunction(() => /sample-5017\.hwp/.test((document.querySelector("#convert-summary") || {}).innerText || ""));
+        assert.match(await page.locator("#convert-summary").innerText(), / · 그림 2개$/);
+        await page.waitForFunction(() => [...document.querySelectorAll("#convert-paper img")].every((i) => i.complete && i.naturalWidth > 0));
+        const imgs = await page.locator("#convert-paper img").evaluateAll((els) => els.map((i) => ({ alt: i.alt, w: i.naturalWidth, h: i.naturalHeight, src: i.src.slice(0, 5), maxW: getComputedStyle(i).maxWidth, prev: (i.closest("figure").previousElementSibling || {}).textContent })));
+        assert.equal(imgs.length, 2);
+        assert.deepEqual(imgs.map((i) => i.alt), ["그림 1", "그림 2"]);
+        assert.ok(imgs.every((i) => i.w > 0 && i.h > 0 && i.src === "blob:" && i.maxW === "100%"), JSON.stringify(imgs));
+        assert.match(imgs[0].prev, /^본 문서는 먼저/);
+        assert.deepEqual(await page.locator("#rn-view .cv-bar button").allInnerTexts(), ["텍스트로 저장", "그림 저장", "내 프로젝트로 가져오기"]);
+        assert.equal(await page.locator("#convert-images").isVisible(), false);
+        await page.click("#convert-images-btn");
+        assert.equal(await page.getAttribute("#convert-images-btn", "aria-expanded"), "true");
+        assert.equal(await page.locator("#convert-images li").count(), 2);
+        assert.match(await page.locator("#convert-images li").first().innerText(), /그림 1[\s\S]*×[\s\S]*KB/);
+        assert.ok(await page.locator("#convert-images li img").first().evaluate((i) => i.naturalWidth > 0 || new Promise((r) => i.onload = () => r(i.naturalWidth > 0))));
+        await page.evaluate(() => { window.__downloads = []; });
+        await page.click("#convert-img-save-1");
+        await page.waitForFunction(() => window.__downloads.length === 1);
+        const d = await page.evaluate(async () => { const x = window.__downloads[0]; const b = new Uint8Array(await x.data.arrayBuffer()); return { filename: x.filename, blob: x.data instanceof Blob, size: x.data.size, head: [...b.slice(0, 4)] }; });
+        assert.deepEqual(d, { filename: "sample-5017-그림2.png", blob: true, size: PNG_5017.length, head: [0x89, 0x50, 0x4e, 0x47] });
+        // 거절은 오류가 아니다
+        await page.evaluate(() => { window.__realDl = RN.caps.downloads.save; RN.caps.downloads.save = async () => { throw { code: "declined" }; }; });
+        await page.click("#convert-img-save-0");
+        await page.waitForTimeout(100);
+        assert.ok(!/저장하지 못했어요/.test(await page.locator("#rn-toast").innerText().catch(() => "")));
+        await page.evaluate(() => { RN.caps.downloads.save = window.__realDl; });
+        // 텍스트로 저장에는 그림 data URL 없이 자리 표시만
+        await page.evaluate(() => { window.__downloads = []; });
+        await page.click("#convert-save");
+        await page.waitForFunction(() => window.__downloads.length === 1);
+        const md = await page.evaluate(() => window.__downloads[0].data);
+        assert.ok(md.includes("(그림 1)") && md.includes("(그림 2)") && !md.includes("data:"), md.slice(0, 300));
+      });
+    }
+    await test("그림을 가져오기: 줄인 그림(한 장 60KB 이하) data URL 줄, 생략 수 안내, 지원 안 하는 형식 안내, 화면을 떠나면 URL 해제", async () => {
+      await page.evaluate(() => RN.go("convert"));
+      await page.waitForSelector("#convert-file");
+      await page.setInputFiles("#convert-file", { name: "큰그림.hwpx", mimeType: "application/octet-stream", buffer: buildHwpxBig() });
+      await page.waitForFunction(() => /큰그림\.hwpx/.test((document.querySelector("#convert-summary") || {}).innerText || ""), null, { timeout: 30000 });
+      assert.match(await page.locator("#convert-summary").innerText(), /그림 2개/);
+      assert.match(await page.locator("#convert-notes").innerText(), /그림 1개는 형식\(WMF\)을 지원하지 않아 가져오지 않았어요\./);
+      await page.waitForFunction(() => [...document.querySelectorAll("#convert-paper img")].length === 2 && [...document.querySelectorAll("#convert-paper img")].every((i) => i.complete && i.naturalWidth > 0));
+      const shown = await page.locator("#convert-paper img").evaluateAll((els) => els.map((i) => [i.naturalWidth, i.naturalHeight, i.getBoundingClientRect().width <= i.closest("article").clientWidth]));
+      assert.deepEqual(shown, [[1600, 1000, true], [1000, 1000, true]]);
+      await page.evaluate(() => {
+        window.__created = []; window.__went = []; window.__realDocs2 = RN.docs; window.__realGo2 = RN.go;
+        RN.docs = {
+          listProjects: async () => [{ id: "p1", title: "진자 실험" }],
+          createDoc: async (pid, input) => { window.__created.push([pid, input]); RN.docs.lastImportInfo = { imagesSkipped: 1 }; return "imgdoc"; },
+        };
+        RN.go = (name, params) => window.__went.push([name, params]);
+      });
+      await page.click("#convert-import");
+      await page.waitForFunction(() => document.querySelectorAll("#convert-project option").length === 1 && !document.querySelector("#convert-import-ok").disabled);
+      await page.click("#convert-import-ok");
+      await page.waitForFunction(() => window.__created.length === 1 && window.__went.length === 1, null, { timeout: 30000 });
+      const [[pid, input]] = await page.evaluate(() => window.__created);
+      assert.equal(pid, "p1");
+      assert.deepEqual(Object.keys(input).sort(), ["markdown", "reason", "sourceName", "title"]);
+      const lines = input.markdown.split("\n").filter((l) => l.startsWith("!["));
+      assert.equal(lines.length, 2, input.markdown.slice(0, 200));
+      const parsed = lines.map((l) => /^!\[(그림 \d+)\]\(data:(image\/(?:png|jpeg));base64,([A-Za-z0-9+/=]+)\)$/.exec(l));
+      assert.ok(parsed.every(Boolean), "독립된 줄 ![그림 N](data:image/…;base64,…)");
+      const sizes = parsed.map((m) => [m[1], m[2], Buffer.from(m[3], "base64")]);
+      assert.deepEqual(sizes.map((x) => [x[0], x[1]]), [["그림 1", "image/jpeg"], ["그림 2", "image/png"]], "불투명은 JPEG, 투명은 PNG");
+      for (const [label, , buf] of sizes) assert.ok(buf.length <= 60 * 1024, `${label} ${buf.length}B`);
+      const dims = await page.evaluate(async (list) => Promise.all(list.map(async ([mime, b64]) => { const bmp = await createImageBitmap(new Blob([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))], { type: mime })); return Math.max(bmp.width, bmp.height); })), parsed.map((m) => [m[2], m[3]]));
+      assert.ok(dims[0] <= 1200 && dims[1] <= 800, JSON.stringify(dims));
+      console.log(`       (1600×1000 잡음 사진 → ${sizes[0][2].length}B JPEG 긴 변 ${dims[0]}px, 1000×1000 투명 → ${sizes[1][2].length}B PNG 긴 변 ${dims[1]}px)`);
+      assert.match(await page.locator("#rn-toast").innerText(), /그림 1개는 문서 크기 제한으로 빠졌어요/);
+      // 화면을 떠나면 미리보기 blob: URL을 놓아 준다
+      await page.evaluate(() => { RN.go = window.__realGo2; RN.docs = window.__realDocs2; });
+      const url = await page.locator("#convert-paper img").first().getAttribute("src");
+      await page.evaluate(() => RN.go("home"));
+      await page.waitForFunction(() => !document.querySelector("#convert-paper"));
+      const gone = await page.evaluate(async (u) => { try { await fetch(u); return false; } catch { return true; } }, url);
+      assert.ok(gone, "revokeObjectURL");
+      await page.evaluate(() => RN.go("convert"));
+      await page.waitForSelector("#convert-file");
+    });
+
     console.log("프로젝트 섹션 \"가져오기\"");
     await test(".md·.txt·.hwp·.hwpx → 새 문서, 손상·지원 안 함은 오류", async () => {
       await page.evaluate(() => {
@@ -607,6 +949,10 @@ const cellAt = (t, row, col) => (t.cells.find((c) => c.row === row && c.col === 
       assert.equal(c[2][1].title, "sample"); assert.equal(c[2][1].sourceName, "sample.hwp"); assert.ok(c[2][1].markdown.includes("| 기준 보 | 12.5 |"));
       assert.equal(c[3][1].sourceName, "sample.hwpx"); assert.equal(c[3][1].markdown, c[2][1].markdown);
       assert.equal(c.length, 4);
+      await up({ name: "그림.hwpx", mimeType: "application/octet-stream", buffer: buildHwpxImages() });
+      await page.waitForFunction(() => window.__created.length === 5);
+      const md5 = await page.evaluate(() => window.__created[4][1].markdown);
+      assert.match(md5, /\n\n!\[그림 1\]\(data:image\/png;base64,[A-Za-z0-9+/=]+\)\n\n/);
       await page.evaluate(() => { RN.docs = window.__realDocs; });
     });
 
@@ -618,6 +964,7 @@ const cellAt = (t, row, col) => (t.cells.find((c) => c.row === row && c.col === 
       await p.waitForSelector("#convert-paper");
       assert.equal(await p.locator("#convert-import").count(), 0);
       assert.match(await p.locator("#convert-out").innerText(), /로그인/);
+      assert.equal(await p.locator("#convert-unsaved").innerText(), await p.evaluate(() => RN.connectionHelp()));
       await p.evaluate(() => {
         const host = document.createElement("div"); host.id = "host-import";
         document.getElementById("rn-view").replaceChildren(host);
@@ -636,10 +983,12 @@ const cellAt = (t, row, col) => (t.cells.find((c) => c.row === row && c.col === 
         { name: "mimetype", data: "application/hwp+zip", store: true },
         { name: "Contents/section0.xml", data: `<hs:sec xmlns:hp="urn:p" xmlns:hs="urn:s"><hp:p><hp:run><hp:tbl rowCnt="1" colCnt="8"><hp:tr>${Array.from({ length: 8 }, (_, i) => `<hp:tc><hp:subList><hp:p><hp:run><hp:t>아주긴셀내용${i}아주긴셀내용아주긴셀내용</hp:t></hp:run></hp:p></hp:subList><hp:cellAddr colAddr="${i}" rowAddr="0"/></hp:tc>`).join("")}</hp:tr></hp:tbl></hp:run></hp:p><hp:p><hp:run><hp:t>${"띄어쓰기없는아주긴문장".repeat(20)}</hp:t></hp:run></hp:p></hs:sec>` },
       ]));
-      for (const f of [path.join(HWP, "sample.hwp"), { name: "넓은표.hwpx", mimeType: "application/octet-stream", buffer: wide }, ...(fs.existsSync(path.join(THIRD, "sample-5017.hwp")) ? [path.join(THIRD, "sample-5017.hwp")] : [])]) {
+      for (const f of [path.join(HWP, "sample.hwp"), { name: "넓은표.hwpx", mimeType: "application/octet-stream", buffer: wide }, { name: "큰그림.hwpx", mimeType: "application/octet-stream", buffer: buildHwpxBig() }, ...(fs.existsSync(path.join(THIRD, "sample-5017.hwp")) ? [path.join(THIRD, "sample-5017.hwp")] : [])]) {
         await p.setInputFiles("#convert-file", f);
         const name = typeof f === "string" ? path.basename(f) : f.name;
         await p.waitForFunction((n) => ((document.querySelector("#convert-summary") || {}).innerText || "").includes(n), name);
+        await p.waitForFunction(() => [...document.querySelectorAll("#convert-paper img")].every((i) => i.complete));
+        if (await p.locator("#convert-images-btn").count()) await p.click("#convert-images-btn");
         const sw = await p.evaluate(() => document.documentElement.scrollWidth);
         assert.ok(sw <= 400, `${name} scrollWidth ${sw}`);
       }

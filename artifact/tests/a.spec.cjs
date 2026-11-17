@@ -609,8 +609,12 @@ async function main() {
       assert(await p.$("main h1"), n + " h1 없음");
     }
     assert((await p.textContent("main")).includes("로그인"), "로그인 안내");
+    // 연결되지 않은 화면: 위쪽 안내 띠 + 함께 게시한 예시 데이터를 읽기 전용으로 보여 준다
+    assert((await p.textContent("#rn-banner:not([hidden])")).includes("둘러보기"), "둘러보기 안내 띠");
+    assert((await p.textContent("#rn-me")) === "둘러보기", "헤더 표시");
     await go(p, "explore", { q: "음향" });
-    assert((await p.textContent("main")).includes("로그인"), "explore 로그인 안내");
+    await p.waitForFunction(() => document.querySelector("main").textContent.includes("음향 블랙홀"));
+    assert(!(await p.textContent("main")).includes("화면을 그리지 못했어요"), "explore 예시 결과");
     await p.click("#chat-fab");
     assert(await p.$("#chat-float:not([hidden])"), "챗봇 패널");
     await p.close();

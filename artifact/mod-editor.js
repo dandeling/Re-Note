@@ -1031,6 +1031,15 @@ ${bodyHtml(content, rules)}
         while (i < lines.length && /\|/.test(lines[i]) && lines[i].trim()) rows.push(cells(lines[i++]));
         blocks.push(normalizeBlock({ id: genId(), type: "table", header: true, rows })); continue;
       }
+      const im = /^\s*!\[([^\]]*)\]\(\s*((?:[^()\s]|\([^()\s]*\))+)(?:\s+"[^"]*")?\s*\)\s*$/.exec(line);
+      if (im) {
+        // 독립된 줄의 그림: 안전한 data: 래스터만 그림으로, 나머지 주소는 글자로 남긴다
+        flush(); i++;
+        const alt = im[1].replace(/\\([\\`*_[\]])/g, "$1").trim().slice(0, 200);
+        if (/^data:image\/(png|jpeg|gif|webp);base64,[A-Za-z0-9+/=\s]+$/i.test(im[2])) blocks.push({ id: genId(), type: "figure", alt, src: im[2].replace(/\s+/g, "") });
+        else blocks.push(para([{ t: "text", text: alt ? `(그림: ${alt})` : "(그림)" }]));
+        continue;
+      }
       if (/^\s*([-*_])(\s*\1){2,}\s*$/.test(line)) { flush(); i++; continue; }
       if (!line.trim()) { flush(); i++; continue; }
       buf.push(line.replace(/^\s+/, "")); i++;
@@ -1229,7 +1238,36 @@ ${bodyHtml(content, rules)}
     return normalizeDoc(null);
   }
 
+  /**
+   * Markdown에서 온 그림(markdownToBlocks가 만든 figure)을 차례로 줄여 넣는다. 문서가 256KiB를 넘을 것 같으면
+   * 그 그림부터 남은 그림은 모두 "(그림 생략: 문서 크기 제한)" 문단으로 바꾼다. → { blocks, imagesKept, imagesSkipped }
+   */
+  async function fitMarkdownImages(blocks, recBase) {
+    const SKIP = () => para([{ t: "text", text: "(그림 생략: 문서 크기 제한)" }]);
+    // Markdown에서는 그림 줄만 figure가 된다(모두 data: 래스터)
+    const out = blocks;
+    const figs = out.map((b, i) => (b.type === "figure" && b.src ? i : -1)).filter((i) => i >= 0);
+    if (!figs.length) return { blocks: out, imagesKept: 0, imagesSkipped: 0 };
+    // 아직 처리하지 않은 그림은 작은 자리표시로 두고 크기를 잰다
+    const holder = (i) => ({ id: out[i].id, type: "figure", alt: out[i].alt, src: "data:image/png;base64," });
+    const cur = out.map((b, i) => (figs.includes(i) ? holder(i) : b));
+    const size = () => jsonBytes({ ...recBase, content: { blocks: cur } });
+    let kept = 0, skipped = 0, stop = false;
+    for (const i of figs) {
+      if (!stop) {
+        let src = out[i].src;
+        try { src = await shrinkImage(src); } catch { /* 원본 */ }
+        cur[i] = { ...out[i], src };
+        if (size() <= DOC_LIMIT - 2048) { kept++; continue; }
+        stop = true;
+      }
+      cur[i] = SKIP(); skipped++;
+    }
+    return { blocks: cur, imagesKept: kept, imagesSkipped: skipped };
+  }
+
   RN.docs = {
+    lastImportInfo: null,
     async listProjects() {
       ensureDb();
       const s = await withTimeout(projCol().get());
@@ -1249,12 +1287,17 @@ ${bodyHtml(content, rules)}
     async createDoc(projectId, opts) {
       ensureDb();
       opts = opts || {};
-      const content = buildContent(opts);
+      let content = buildContent(opts);
       const now = Date.now();
       const rec = {
         projectId: String(projectId), title: String(opts.title || "제목 없는 문서").slice(0, 200), content,
         formatRules: opts.formatRules ? normalizeRules(opts.formatRules).rules : null, version: 1, deletedAt: null, createdAt: now, updatedAt: now,
       };
+      if (typeof opts.markdown === "string" && !opts.content) {
+        const fit = await fitMarkdownImages(markdownToBlocks(opts.markdown), rec);
+        content = rec.content = normalizeDoc({ blocks: fit.blocks });
+        RN.docs.lastImportInfo = { imagesKept: fit.imagesKept, imagesSkipped: fit.imagesSkipped };
+      } else RN.docs.lastImportInfo = { imagesKept: 0, imagesSkipped: 0 };
       if (jsonBytes(rec) > DOC_LIMIT) throw new Error("문서가 256KiB를 넘어 저장할 수 없어요. 큰 그림이나 표를 줄여 주세요.");
       const id = RN.newId();
       await withTimeout(docCol().doc(id).set(rec));
@@ -1327,8 +1370,23 @@ ${bodyHtml(content, rules)}
 .rn-menu button { text-align: left; font: inherit; font-size: 0.9rem; border: 0; background: none; color: var(--fg); padding: 6px 10px; border-radius: 4px; cursor: pointer; white-space: nowrap; }
 .rn-menu button:hover, .rn-menu button:focus { background: var(--accent-soft); outline: none; }
 .rn-menu .rn-menu-sep { border-top: 1px solid var(--line); margin: 4px 0; }
-.rn-palette { position: absolute; z-index: 24; top: calc(100% + 4px); left: 0; width: min(340px, 100%); display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: ${shadow(8, 14)}; }
-.rn-palette .rn-btn { font-size: 0.8rem; padding: 4px; min-width: 0; border-color: var(--line); }
+.rn-mathdlg { width: min(600px, calc(100vw - 24px)); max-width: calc(100vw - 24px); padding: 18px; }
+.rn-mathdlg form { gap: 12px; }
+.rn-mathdlg p { margin-bottom: 0; }
+.rn-mathdlg h2 { font-size: 1.05rem; }
+.rn-mathdlg-tpls { display: flex; flex-wrap: wrap; gap: 4px; }
+.rn-mathdlg-tpls .rn-btn { min-width: 36px; padding: 5px 8px; font-size: 0.9rem; }
+.rn-mathdlg-cheat { flex-basis: 100%; margin-top: 2px; }
+.rn-mathdlg #math-easy { font-family: var(--font-mono); font-size: 1.05rem; }
+.rn-mathdlg #math-latex { font-family: var(--font-mono); font-size: 0.85rem; min-height: 56px; }
+.rn-mathdlg-preview { background: var(--paper); color: var(--paper-fg); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 12px; min-height: 72px; font-size: 1.5rem; display: flex; align-items: center; justify-content: center; overflow-x: auto; max-width: 100%; }
+.rn-mathdlg-preview > * { max-width: 100%; }
+.rn-mathdlg-warn { color: var(--warn); }
+.rn-mathdlg-latex > summary { font-size: 0.85rem; }
+.rn-mathdlg-latex[open] > summary { margin-bottom: 8px; }
+.rn-mathdlg-mode { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 0.9rem; }
+.rn-mathdlg-mode legend { padding: 0 0 4px; color: var(--muted); font-weight: 600; }
+.rn-mathdlg-ai { padding: 10px 12px; background: var(--surface-2); border-radius: var(--radius); }
 .rn-ed-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; align-items: start; }
 @media (min-width: 1000px) { .rn-ed-layout.has-side { grid-template-columns: minmax(0, 1fr) 360px; } .rn-ed-side { position: sticky; top: 64px; max-height: calc(100vh - 80px); overflow: auto; } }
 @media (max-width: 999px) { .rn-ed-side { order: -1; } }
@@ -1988,7 +2046,7 @@ ${HEADS.map((hl, i) => `.rn-paper .rn-h${i + 1} { font-family: var(--fmt-${hl}-f
       while ((m = INLINE_MATH_RE.exec(s))) {
         changed = true;
         if (m.index) out.push({ ...n, text: s.slice(0, m.index) });
-        out.push({ t: "math", latex: m[1] });
+        out.push({ t: "math", latex: easyToLatex(m[1]) });
         s = s.slice(m.index + m[0].length);
       }
       if (s) out.push({ ...n, text: s });
@@ -1996,13 +2054,363 @@ ${HEADS.map((hl, i) => `.rn-paper .rn-h${i + 1} { font-family: var(--fmt-${hl}-f
     return changed ? normInline(out) : null;
   }
   const hhmm = (ms) => { const d = new Date(ms); return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); };
-  const PALETTE = [
-    ["분수", "\\frac{a}{b}"], ["제곱근", "\\sqrt{x}"], ["거듭제곱", "x^{2}"], ["아래첨자", "x_{i}"],
-    ["적분", "\\int_{a}^{b} f(x)\\,dx"], ["합", "\\sum_{i=1}^{n} x_i"], ["극한", "\\lim_{x \\to 0}"], ["행렬", "\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}"],
-    ["α", "\\alpha"], ["β", "\\beta"], ["γ", "\\gamma"], ["δ", "\\delta"], ["θ", "\\theta"], ["λ", "\\lambda"], ["μ", "\\mu"], ["π", "\\pi"],
-    ["σ", "\\sigma"], ["ω", "\\omega"], ["Δ", "\\Delta"], ["Σ", "\\Sigma"], ["±", "\\pm"], ["×", "\\times"], ["≤", "\\le"], ["≥", "\\ge"],
-    ["≠", "\\neq"], ["≈", "\\approx"], ["∞", "\\infty"], ["→", "\\to"], ["∂", "\\partial"], ["벡터", "\\vec{v}"], ["평균", "\\bar{x}"], ["단위", "\\,\\mathrm{m/s}"],
-  ];
+  // ---------- 쉬운 수식 표기 → LaTeX (순수 함수) ----------
+  // 학생이 평소 쓰는 식(a/b, x^2, sqrt(x), 알파, <= …)을 LaTeX로 바꾼다. 백슬래시가 들어 있으면 이미 LaTeX로 보고 그대로 둔다.
+  // 바꿀 수 없으면 원문을 그대로 돌려준다(예외를 던지지 않는다).
+  const EZ_GREEK = "alpha beta gamma delta epsilon varepsilon zeta eta theta vartheta iota kappa lambda mu nu xi pi varpi rho sigma tau upsilon phi varphi chi psi omega Gamma Delta Theta Lambda Xi Pi Sigma Upsilon Phi Psi Omega".split(" ");
+  const EZ_FUNCS = "sin cos tan sec csc cot arcsin arccos arctan sinh cosh tanh log ln exp max min det gcd".split(" ");
+  const EZ_SPECIAL = ["sqrt", "root", "sum", "prod", "int", "oint", "lim", "vec", "bar", "hat", "abs", "frac"];
+  const EZ_WORDS = new Map([...EZ_GREEK.map((g) => [g, "\\" + g]), ...EZ_FUNCS.map((f) => [f, "\\" + f]), ["inf", "\\infty"], ["infty", "\\infty"], ["infinity", "\\infty"], ["partial", "\\partial"], ["deg", "^{\\circ}"]]);
+  const EZ_KNOWN = [...EZ_WORDS.keys(), ...EZ_SPECIAL].sort((a, b) => b.length - a.length);
+  const EZ_KO = {
+    알파: "\\alpha", 베타: "\\beta", 감마: "\\gamma", 델타: "\\Delta", 엡실론: "\\epsilon", 입실론: "\\epsilon", 제타: "\\zeta", 에타: "\\eta", 세타: "\\theta", 쎄타: "\\theta",
+    요타: "\\iota", 카파: "\\kappa", 람다: "\\lambda", 뮤: "\\mu", 크사이: "\\xi", 파이: "\\pi", 시그마: "\\sigma", 타우: "\\tau", 피: "\\phi", 카이: "\\chi", 프사이: "\\psi",
+    오메가: "\\omega", 무한대: "\\infty", 무한: "\\infty", 도: "^{\\circ}",
+  };
+  const EZ_KO_CALL = { 루트: "sqrt", 제곱근: "sqrt", 벡터: "vec", 평균: "bar", 절댓값: "abs", 절대값: "abs", 적분: "int", 극한: "lim", 분수: "frac" };
+  const EZ_SYM = {
+    "π": "\\pi", "α": "\\alpha", "β": "\\beta", "γ": "\\gamma", "δ": "\\delta", "ε": "\\epsilon", "ζ": "\\zeta", "η": "\\eta", "θ": "\\theta", "ι": "\\iota", "κ": "\\kappa", "λ": "\\lambda",
+    "μ": "\\mu", "µ": "\\mu", "ν": "\\nu", "ξ": "\\xi", "ρ": "\\rho", "σ": "\\sigma", "τ": "\\tau", "υ": "\\upsilon", "φ": "\\phi", "ϕ": "\\phi", "χ": "\\chi", "ψ": "\\psi", "ω": "\\omega",
+    "Γ": "\\Gamma", "Δ": "\\Delta", "∆": "\\Delta", "Θ": "\\Theta", "Λ": "\\Lambda", "Ξ": "\\Xi", "Π": "\\Pi", "Σ": "\\Sigma", "Φ": "\\Phi", "Ψ": "\\Psi", "Ω": "\\Omega", "Ω": "\\Omega",
+    "∞": "\\infty", "∂": "\\partial", "∇": "\\nabla", "∠": "\\angle", "△": "\\triangle", "∑": "\\sum", "∏": "\\prod", "∫": "\\int", "∮": "\\oint", "℃": "{}^{\\circ}\\mathrm{C}", "ℏ": "\\hbar",
+  };
+  const EZ_OPS = {
+    "*": "\\times", "×": "\\times", "·": "\\cdot", "∙": "\\cdot", "÷": "\\div", "+-": "\\pm", "±": "\\pm", "-+": "\\mp", "∓": "\\mp",
+    "<=": "\\le", "≤": "\\le", ">=": "\\ge", "≥": "\\ge", "!=": "\\ne", "≠": "\\ne", "~=": "\\approx", "≈": "\\approx", "==": "=", "≡": "\\equiv",
+    "->": "\\to", "→": "\\to", "<-": "\\leftarrow", "←": "\\leftarrow", "=>": "\\Rightarrow", "⇒": "\\Rightarrow", "<=>": "\\Leftrightarrow", "⇔": "\\Leftrightarrow", "<->": "\\leftrightarrow", "↔": "\\leftrightarrow",
+    "~": "\\sim", "∝": "\\propto", "∈": "\\in", "⊥": "\\perp", "∥": "\\parallel", "∴": "\\therefore", "∵": "\\because", "%": "\\%", "#": "\\#", "&": "\\&", "$": "\\$", "}": "\\}",
+    "+": "+", "-": "-", "−": "-", "=": "=", "<": "<", ">": ">", ",": ",", ";": ";", ":": ":", ".": ".", "/": "/", "?": "?", "@": "@", ")": ")", "]": "]",
+  };
+  const EZ_MULTI = ["<=>", "<->", "->", "<-", "=>", "<=", ">=", "!=", "~=", "==", "+-", "-+"];
+  const EZ_UNITS = new Set("m cm mm km nm um s ms min h g kg mg N kN J kJ W kW Pa kPa hPa atm K mol L mL A mA V mV Hz kHz MHz C eV cal kcal T dB lx rad mmHg".split(" "));
+  const KO_RE = /^[가-힣ㄱ-ㅎㅏ-ㅣ]+/;
+
+  /** 이어 붙일 때 `\le`+`x` → `\le x`처럼 명령 뒤에 글자가 오면 띄운다 */
+  const ezCat = (a, b, sp) => {
+    if (!a) return b; if (!b) return a;
+    if (/\\[A-Za-z]+$/.test(a) && /^[A-Za-z]/.test(b)) return a + " " + b;
+    return a + (sp ? " " : "") + b;
+  };
+  const ezBrace = (t) => (/^[A-Za-z0-9]$/.test(t) ? t : "{" + t + "}");
+  /** 글자 덩어리를 아는 낱말과 한 글자로 나눈다: "2pir"의 "pir" → pi, r · "sinx" → sin, x */
+  function ezSplitWord(w) {
+    if (EZ_WORDS.has(w) || EZ_SPECIAL.includes(w)) return [w];
+    const out = [];
+    let i = 0, afterWord = true;
+    while (i < w.length) {
+      const hit = EZ_KNOWN.find((k) => w.startsWith(k, i) && (k.length > 2 || afterWord));
+      if (hit) { out.push(hit); i += hit.length; afterWord = true; }
+      else { out.push(w[i]); i++; afterWord = false; }
+    }
+    return out;
+  }
+  function ezTokenize(s) {
+    const toks = [];
+    let i = 0, sp = false, m;
+    while (i < s.length) {
+      const c = s[i], rest = s.slice(i);
+      if (/\s/.test(c)) { sp = true; i++; continue; }
+      if ((m = /^\d+(?:\.\d+)?/.exec(rest))) toks.push({ t: "num", v: m[0], sp });
+      else if ((m = /^[A-Za-z]+/.exec(rest))) toks.push({ t: "id", v: m[0], sp });
+      else if ((m = KO_RE.exec(rest))) toks.push({ t: "ko", v: m[0], sp });
+      else if ((m = EZ_MULTI.find((o) => rest.startsWith(o)))) toks.push({ t: "ch", v: m, sp }), (m = [m]);
+      else { const ch = String.fromCodePoint(s.codePointAt(i)); toks.push({ t: "ch", v: ch, sp }); m = [ch]; }
+      i += m[0].length; sp = false;
+    }
+    return toks;
+  }
+
+  function easyToLatex(input) {
+    const src = String(input == null ? "" : input).replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, "").trim();
+    if (!src) return "";
+    if (/\\/.test(src) || src.length > 4000) return src; // 이미 LaTeX(또는 너무 긴 글) → 그대로
+    try {
+      const out = ezParse(src);
+      // 마지막 안전 검사: 중괄호 짝
+      let depth = 0;
+      for (let i = 0; i < out.length; i++) {
+        if (out[i] === "\\") { i++; continue; }
+        if (out[i] === "{") depth++; else if (out[i] === "}" && --depth < 0) return src;
+      }
+      return depth === 0 ? out : src;
+    } catch { return src; }
+  }
+
+  function ezParse(src) {
+    const toks = ezTokenize(src);
+    let pos = 0, sawInt = false;
+    const peek = (k) => toks[pos + (k || 0)];
+    const isCh = (t, v) => !!t && t.t === "ch" && (v === undefined || t.v === v);
+    const POSTFIX = new Set(["^", "_", "!", "'", "°"]);
+
+    /** 연산자 사이의 항들 → 분수(/)를 접어 한 줄 LaTeX로 */
+    function parseSeq(stops) {
+      const items = [];
+      while (pos < toks.length) {
+        const t = peek();
+        if (isCh(t) && stops.has(t.v)) break;
+        if (isCh(t) && EZ_OPS[t.v] !== undefined && !POSTFIX.has(t.v)) { pos++; items.push({ op: true, raw: t.v, tex: EZ_OPS[t.v], sp: t.sp }); continue; }
+        let term = parsePostfix();
+        if (!term) { pos++; items.push({ op: true, raw: t.v, tex: "\\text{" + t.v + "}", sp: t.sp }); continue; }
+        if (term.isNum) { const u = tryUnits(); if (u) term = { ...term, tex: term.tex + "\\," + u, post: true }; }
+        items.push(term);
+      }
+      return fold(items);
+    }
+    function fold(items) {
+      const units = [];
+      for (const it of items) {
+        const last = units[units.length - 1];
+        if (!it.op && last && !last.op && !it.sp) last.terms.push(it);
+        else if (it.op) units.push(it);
+        else units.push({ terms: [it], sp: it.sp });
+      }
+      const out = [];
+      for (let k = 0; k < units.length; k++) {
+        const u = units[k], L = out[out.length - 1], R = units[k + 1];
+        if (u.op && u.raw === "/" && L && !L.op && R && !R.op) {
+          out[out.length - 1] = { terms: null, tex: `\\frac{${operand(L)}}{${operand(R)}}`, sp: L.sp };
+          k++; continue;
+        }
+        out.push(u);
+      }
+      let s = "";
+      for (const u of out) s = ezCat(s, u.op ? u.tex : unitTex(u), u.sp && s !== "");
+      return s;
+    }
+    const unitTex = (u) => (u.terms ? u.terms.reduce((s, t) => ezCat(s, t.tex, false), "") : u.tex);
+    /** 분수의 분자·분모: 괄호 하나로 묶인 것이면 괄호를 벗긴다 */
+    function operand(u) {
+      if (u.terms && u.terms.length === 1 && (u.terms[0].group === "(" || u.terms[0].group === "{") && !u.terms[0].post) return u.terms[0].inner;
+      return unitTex(u);
+    }
+    function parsePostfix() {
+      const term = parsePrimary();
+      if (!term) return null;
+      for (;;) {
+        const t = peek();
+        if (!isCh(t)) break;
+        if (t.v === "^" || t.v === "_" || t.v === "°") {
+          pos++;
+          const key = t.v === "_" ? "sub" : "sup";
+          if (term[key]) { term.tex = "{" + term.tex + "}"; term.sup = term.sub = false; }
+          term.tex = t.v === "°" ? ezCat(term.tex, "^{\\circ}") : term.tex + t.v + ezBrace(parseOperand());
+          term[key] = true; term.post = true;
+        } else if ((t.v === "!" || t.v === "'") && !t.sp) { pos++; term.tex += t.v; term.post = true; }
+        else break;
+      }
+      return term;
+    }
+    /** ^, _ 뒤: 부호 하나 + 항 하나. 괄호면 벗긴다 */
+    function parseOperand() {
+      const t = peek();
+      if (!t) return "";
+      if (isCh(t, "-") || isCh(t, "+")) { pos++; return t.v + parseOperand(); }
+      if (isCh(t, "(") || isCh(t, "{")) { const g = parsePrimary(); return g.inner; }
+      const p = parsePrimary();
+      return p ? p.tex : "";
+    }
+    function parseArgs() {
+      pos++; // (
+      const args = [];
+      for (;;) {
+        args.push(parseSeq(new Set([",", ")"])).trim());
+        const t = peek();
+        if (isCh(t, ",")) { pos++; continue; }
+        if (isCh(t, ")")) pos++;
+        break;
+      }
+      return args;
+    }
+    function special(name, sp) {
+      const call = isCh(peek(), "(");
+      const T = (tex, extra) => ({ tex, sp, ...extra });
+      if (name === "int" || name === "oint") sawInt = true;
+      if (name === "sqrt" || name === "root") {
+        if (call) { const a = parseArgs(); return T(a.length >= 2 && name === "root" ? `\\sqrt[${a[0]}]{${a.slice(1).join(",")}}` : `\\sqrt{${a.join(",")}}`); }
+        const p = parsePostfix();
+        return T(`\\sqrt{${p ? (p.group === "(" && !p.post ? p.inner : p.tex) : ""}}`);
+      }
+      if (name === "vec" || name === "bar" || name === "hat") {
+        let x;
+        if (call) x = parseArgs().join(","); else { const p = parsePrimary(); x = p ? p.tex : ""; }
+        const one = /^(\\[A-Za-z]+|[A-Za-z0-9])$/.test(x);
+        const cmd = name === "vec" ? (one ? "\\vec" : "\\overrightarrow") : name === "bar" ? (one ? "\\bar" : "\\overline") : (one ? "\\hat" : "\\widehat");
+        return T(`${cmd}{${x}}`);
+      }
+      if (name === "abs") { if (!call) return T("|"); return T(`\\left|${parseArgs().join(",")}\\right|`); }
+      if (name === "frac") {
+        if (!call) return T("\\frac{}{}");
+        const a = parseArgs();
+        return T(`\\frac{${a[0] || ""}}{${a.slice(1).join(",")}}`);
+      }
+      // sum, prod, int, lim
+      const cmd = "\\" + name;
+      if (!call) return T(cmd);
+      const a = parseArgs();
+      if (name === "lim") {
+        if (a.length === 1) return T(/\\to/.test(a[0]) ? `\\lim_{${a[0]}}` : ezCat(cmd, a[0], true));
+        return T(ezCat(`\\lim_{${a[0]}}`, a.slice(1).join(","), true));
+      }
+      if (a.length === 1) return T(ezCat(cmd, a[0], true));
+      if (a.length === 2) return T(`${cmd}_{${a[0]}}^{${a[1]}}`);
+      return T(ezCat(`${cmd}_{${a[0]}}^{${a[1]}}`, a.slice(2).join(","), true));
+    }
+    function parsePrimary() {
+      const t = peek();
+      if (!t) return null;
+      const sp = t.sp;
+      if (t.t === "num") { pos++; return { tex: t.v, isNum: true, sp }; }
+      if (t.t === "id") {
+        if (sawInt && t.sp && /^d[A-Za-z]$/.test(t.v)) { pos++; return { tex: "\\," + t.v, sp }; }
+        const parts = ezSplitWord(t.v);
+        if (parts.length > 1) toks.splice(pos, 1, ...parts.map((v, k) => ({ t: "id", v, sp: k ? false : t.sp })));
+        const w = toks[pos].v;
+        pos++;
+        if (EZ_SPECIAL.includes(w)) return special(w, sp);
+        if (EZ_WORDS.has(w)) return { tex: EZ_WORDS.get(w), sp, fn: EZ_FUNCS.includes(w) };
+        return { tex: w, sp };
+      }
+      if (t.t === "ko") {
+        pos++;
+        if (EZ_KO_CALL[t.v]) return special(EZ_KO_CALL[t.v], sp);
+        if (EZ_KO[t.v]) return { tex: EZ_KO[t.v], sp };
+        // 모르는 한글 낱말은 이어지는 낱말과 함께 글자로
+        let words = t.v;
+        while (peek() && peek().t === "ko" && !EZ_KO[peek().v] && !EZ_KO_CALL[peek().v]) { words += (peek().sp ? " " : "") + peek().v; pos++; }
+        return { tex: `\\text{${words}}`, sp };
+      }
+      const v = t.v;
+      if (v === "(" || v === "[" || v === "{") {
+        pos++;
+        const close = { "(": ")", "[": "]", "{": "}" }[v];
+        const inner = parseSeq(new Set([close]));
+        const closed = isCh(peek(), close);
+        if (closed) pos++;
+        let tex;
+        if (v === "(") tex = closed ? (/\\(frac|sqrt|sum|int|prod)/.test(inner) ? `\\left(${inner}\\right)` : `(${inner})`) : "(" + inner;
+        else if (v === "[") tex = "[" + inner + (closed ? "]" : "");
+        else tex = "\\{" + inner + (closed ? "\\}" : "");
+        return { tex, group: v, inner, sp };
+      }
+      if (v === "|") {
+        pos++;
+        const inner = parseSeq(new Set(["|"]));
+        if (isCh(peek(), "|")) { pos++; return { tex: `\\left|${inner}\\right|`, sp }; }
+        return { tex: "|" + inner, sp };
+      }
+      if (v === "√") {
+        pos++;
+        const p = parsePostfix();
+        return { tex: `\\sqrt{${p ? (p.group === "(" && !p.post ? p.inner : p.tex) : ""}}`, sp };
+      }
+      if (EZ_SYM[v]) {
+        pos++;
+        if (v === "∫" || v === "∮") sawInt = true;
+        return { tex: EZ_SYM[v], sp };
+      }
+      if (v === "^" || v === "_" || v === "°") return { tex: "{}", sp }; // 밑이 없는 첨자
+      if (v === "'") { pos++; return { tex: "{}'", sp }; }
+      if (v === "!") { pos++; return { tex: "!", sp }; }
+      if (EZ_OPS[v] !== undefined) return null;
+      if (/[\p{L}\p{N}]/u.test(v) || /[^\x00-\x7f]/.test(v)) { pos++; return { tex: `\\text{${v}}`, sp }; }
+      pos++;
+      return { tex: `\\text{${v === '"' ? "''" : v}}`, sp };
+    }
+    /** 수 뒤의 단위: "9.8 m/s^2" → \,\mathrm{m/s^{2}} (분명한 경우만) */
+    function tryUnits() {
+      const save = pos, first = peek();
+      if (!first || !first.sp) return null;
+      let s = "";
+      const atom = (needGlue) => {
+        const a = peek();
+        if (!a || (needGlue && a.sp)) return false;
+        if (a.t === "id" && EZ_UNITS.has(a.v)) { pos++; s += a.v; }
+        else if (isCh(a, "℃")) { pos++; s += "{}^{\\circ}C"; }
+        else if (isCh(a, "°") && peek(1) && peek(1).t === "id" && peek(1).v === "C" && !peek(1).sp) { pos += 2; s += "{}^{\\circ}C"; }
+        else if (isCh(a, "Ω") || isCh(a, "Ω")) { pos++; s += "\\Omega"; }
+        else if ((isCh(a, "μ") || isCh(a, "µ")) && peek(1) && peek(1).t === "id" && /^(m|s|g|A|L|mol)$/.test(peek(1).v) && !peek(1).sp) { pos += 2; s += "\\mu " + toks[pos - 1].v; }
+        else return false;
+        if (isCh(peek(), "^") && !peek().sp) {
+          const save2 = pos; pos++;
+          let sign = "";
+          if (isCh(peek(), "-")) { sign = "-"; pos++; }
+          const n = peek();
+          if (n && n.t === "num" && !n.sp) { pos++; s += "^" + ezBrace(sign + n.v); } else pos = save2;
+        }
+        return true;
+      };
+      if (!atom(false)) { pos = save; return null; }
+      for (;;) {
+        const o = peek();
+        if (o && !o.sp && (isCh(o, "/") || isCh(o, "*") || isCh(o, "·"))) {
+          const save3 = pos, before = s;
+          pos++; s += o.v === "/" ? "/" : "\\cdot ";
+          if (!atom(true)) { pos = save3; s = before; break; }
+        } else break;
+      }
+      const n = peek();
+      const ok = !n || (isCh(n) && [",", ";", ")", "]"].includes(n.v)) ||
+        (n.sp && (n.t === "ko" || (isCh(n) && ["=", "<", ">", "<=", ">=", "~=", "!=", "≈", "≤", "≥", "≠", "+", "-", "±", "+-", ",", "→", "->"].includes(n.v))));
+      if (!ok) { pos = save; return null; }
+      return `\\mathrm{${s}}`;
+    }
+    return parseSeq(new Set()).trim();
+  }
+
+  /** 저장된 LaTeX → 쉬운 표기(다시 바꿨을 때 같은 수식이 될 때만). 못 하면 null. */
+  function latexToEasy(latex) {
+    const orig = String(latex || "").trim();
+    if (!orig) return "";
+    if (!/[\\{}]/.test(orig)) return orig;
+    let s = orig.replace(/\{\}\^\{\\circ\}/g, "°").replace(/\^\{\\circ\}/g, "°");
+    const wrap = (a) => (/^[A-Za-z0-9.]+$/.test(a) || /^\\[A-Za-z]+$/.test(a) || /^\\?[A-Za-z]+\([^()]*\)$/.test(a) ? a : "(" + a + ")");
+    for (let guard = 0; guard < 30; guard++) {
+      const prev = s;
+      s = s.replace(/\\frac\{([^{}]*)\}\{([^{}]*)\}/g, (_, a, b) => wrap(a) + "/" + wrap(b))
+        .replace(/\\sqrt\[([^{}[\]]*)\]\{([^{}]*)\}/g, "root($1, $2)")
+        .replace(/\\sqrt\{([^{}]*)\}/g, "sqrt($1)")
+        .replace(/\\(vec|bar|hat|overline|overrightarrow|widehat)\{([^{}]*)\}/g, (_, f, a) => ({ overline: "bar", overrightarrow: "vec", widehat: "hat" }[f] || f) + "(" + a + ")")
+        .replace(/\\mathrm\{([^{}]*)\}/g, (_, a) => a.replace(/\\cdot\s*/g, "·").replace(/\\mu\s*/g, "μ").replace(/\\Omega/g, "Ω"))
+        .replace(/\\text\{([^{}]*)\}/g, "$1")
+        .replace(/([\^_])\{([^{}]*)\}/g, (_, op, a) => op + (/^[A-Za-z0-9]$/.test(a) ? a : "(" + a + ")"));
+      if (s === prev) break;
+    }
+    s = s.replace(/\\left\s*\|/g, "|").replace(/\\right\s*\|/g, "|").replace(/\\left\s*\(/g, "(").replace(/\\right\s*\)/g, ")").replace(/\\,/g, " ");
+    const REV = { times: "*", cdot: "·", div: "÷", pm: "+-", mp: "-+", le: "<=", leq: "<=", ge: ">=", geq: ">=", ne: "!=", neq: "!=", approx: "~=", to: "->", rightarrow: "->", Rightarrow: "=>", infty: "inf", sim: "~", partial: "partial" };
+    s = s.replace(/\\([A-Za-z]+)/g, (m, name, off, str) => {
+      if (REV[name]) return " " + REV[name] + " ";
+      if (EZ_WORDS.has(name) || ["sum", "prod", "int", "oint", "lim"].includes(name)) return name + (/[A-Za-z0-9]/.test(str[off + m.length] || "") ? " " : "");
+      return m;
+    });
+    s = s.replace(/[ ]{2,}/g, " ").replace(/\( /g, "(").replace(/ \)/g, ")").trim();
+    if (/[\\{}]/.test(s)) return null;
+    const norm = (x) => x.replace(/\\left|\\right/g, "").replace(/\\leq\b/g, "\\le").replace(/\\geq\b/g, "\\ge").replace(/\\neq\b/g, "\\ne").replace(/([_^])\{([A-Za-z0-9])\}/g, "$1$2").replace(/\s+/g, "");
+    return norm(easyToLatex(s)) === norm(orig) ? s : null;
+  }
+  // 말로 설명해서 수식 만들기 (sample)
+  let mathAiOff = false; // 이 화면에서 AI를 쓸 수 없다고 확인되면 버튼을 다시 보이지 않는다
+  const MATH_AI_HIDE = new Set(["not_granted", "sampling_disabled", "not_declared", "capability_disabled", "capability_removed"]);
+  const MATH_AI_PROMPT = (q) => "학생이 보고서에 넣을 수식을 말로 설명했어요. 그 수식을 LaTeX 한 줄로만 답하세요.\n" +
+    "- KaTeX로 그릴 수 있는 명령만 쓰세요.\n- $ 기호, 코드 블록, 설명 문장 없이 수식만 쓰세요.\n- 여러 식이 떠오르면 가장 대표적인 하나만 쓰세요.\n\n설명: " + String(q).slice(0, 500);
+  function cleanAiLatex(text) {
+    let s = String(text || "").trim();
+    const fence = /```[a-zA-Z]*\n?([\s\S]*?)```/.exec(s);
+    if (fence) s = fence[1];
+    s = s.trim().replace(/^\$\$([\s\S]*)\$\$$/, "$1").replace(/^\$([\s\S]*)\$$/, "$1").replace(/^\\\[([\s\S]*)\\\]$/, "$1").replace(/^\\\(([\s\S]*)\\\)$/, "$1");
+    return s.split("\n").map((l) => l.trim()).filter(Boolean).join(" ").trim();
+  }
+  function mathAiError(code) {
+    switch (code) {
+      case "rate_limited": return "요청이 많아요. 잠시 뒤 다시 눌러 주세요.";
+      case "session_expired": return "Claude에 다시 로그인해 주세요.";
+      case "refused": return "이 설명으로는 만들 수 없어요. 다르게 설명해 주세요.";
+      case "empty_completion": return "답이 비어 있어요. 더 짧게 설명해 보세요.";
+      case "prompt_too_large": return "설명이 너무 길어요. 짧게 줄여 주세요.";
+      case "invalid_request": case "transform_error": case "queue_overflow": return "요청을 만들지 못했어요 (" + code + ").";
+      default: return "만들지 못했어요. 다시 눌러 보세요.";
+    }
+  }
 
   RN.view("editor", {
     title: "문서 편집",
@@ -2039,7 +2447,7 @@ ${HEADS.map((hl, i) => `.rn-paper .rn-h${i + 1} { font-family: var(--fmt-${hl}-f
     let model = normalizeDoc(rec.content);
     let rules = normalizeRules(rec.formatRules || DEFAULT_RULES).rules;
     let numbering = computeNumbering(model, captionPositions(rules));
-    let currentId = null, editingMathId = null, popup = null, lastMathTa = null;
+    let currentId = null, popup = null;
     let savedSel = null;   // 마지막 본문 선택(모델 위치) — 도구 모음·패널이 쓴다
     let pending = null;    // 접힌 커서에서 켠 굵게·기울임 { line, off, b, i }
     let composing = false;
@@ -2160,22 +2568,11 @@ ${HEADS.map((hl, i) => `.rn-paper .rn-h${i + 1} { font-family: var(--fmt-${hl}-f
         }
         case "math": {
           wrap.setAttribute("aria-label", "블록 수식 — Enter로 고치기, Delete로 삭제");
-          if (editingMathId === b.id) {
-            const ta = h("textarea", { id: "ed-math-src", "aria-label": "LaTeX 수식", spellcheck: false });
-            ta.value = b.latex;
-            const preview = h("div", { class: "preview", "aria-live": "polite" });
-            setMath(preview, b.latex, true);
-            ta.addEventListener("input", () => { b.latex = ta.value; wrap.__key = blockKey(b); setMath(preview, b.latex, true); afterChange("typing"); });
-            ta.addEventListener("keydown", (e) => { if ((e.key === "Enter" && (e.ctrlKey || e.metaKey)) || e.key === "Escape") { e.preventDefault(); e.stopPropagation(); finishMath(b.id); } });
-            ta.addEventListener("focus", () => { lastMathTa = ta; });
-            wrap.append(h("div", { class: "rn-math-edit" }, RN.field("블록 수식 (LaTeX) — Ctrl+Enter로 마침", ta), preview,
-              h("div", { class: "rn-row rn-end" }, h("button", { type: "button", class: "rn-btn rn-primary", onclick: () => finishMath(b.id) }, "완료"))));
-          } else {
-            const view = h("div", { class: "rn-math-view", title: "눌러서 고치기", onclick: () => editMath(b.id) });
-            setMath(view, b.latex, true);
-            if (!b.latex) view.textContent = "(빈 수식)";
-            wrap.append(atomBar(b, [["편집", editMath, "edit"], ["캡션", addCaption, "caption"], ["삭제", deleteBlock, "delete"]]), h("div", { class: "rn-math" }, view, h("span", { class: "rn-eqno" })));
-          }
+          const view = h("div", { class: "rn-math-view", title: "눌러서 고치기", onclick: () => editMath(b.id) });
+          wrap.addEventListener("dblclick", () => editMath(b.id));
+          setMath(view, b.latex, true);
+          if (!b.latex) view.textContent = "(빈 수식)";
+          wrap.append(atomBar(b, [["편집", editMath, "edit"], ["캡션", addCaption, "caption"], ["삭제", deleteBlock, "delete"]]), h("div", { class: "rn-math" }, view, h("span", { class: "rn-eqno" })));
           break;
         }
         case "toc": {
@@ -2187,7 +2584,7 @@ ${HEADS.map((hl, i) => `.rn-paper .rn-h${i + 1} { font-family: var(--fmt-${hl}-f
       }
       return wrap;
     }
-    const blockKey = (b) => JSON.stringify(b) + (editingMathId === b.id ? "#edit" : "") + (model.blocks.length === 1 ? "#solo" : "");
+    const blockKey = (b) => JSON.stringify(b) + (model.blocks.length === 1 ? "#solo" : "");
     /** 모델과 DOM 맞추기: 바뀐 블록만 다시 그리고 순서를 맞춘다. force면 전부 다시. */
     function syncDom(force) {
       const existing = new Map();
@@ -2346,7 +2743,6 @@ ${HEADS.map((hl, i) => `.rn-paper .rn-h${i + 1} { font-family: var(--fmt-${hl}-f
       const o = JSON.parse(entry.s);
       title = o.title; titleInput.value = title; h1.textContent = title || "제목 없는 문서";
       model = normalizeDoc({ blocks: o.blocks });
-      editingMathId = null;
       syncDom();
       afterChange("history", { history: false });
       if (entry.sel) setSel(entry.sel.a, entry.sel.b);
@@ -2466,7 +2862,6 @@ ${HEADS.map((hl, i) => `.rn-paper .rn-h${i + 1} { font-family: var(--fmt-${hl}-f
     blocksEl.addEventListener("focusin", (e) => {
       const blk = e.target.closest && e.target.closest(".rn-blk");
       if (blk && e.target !== blocksEl) currentId = blk.dataset.id;
-      if (!e.target.closest(".rn-math-edit")) lastMathTa = null;
     });
 
     // ---------- 입력 (beforeinput으로 가로채기) ----------
@@ -2515,13 +2910,11 @@ ${HEADS.map((hl, i) => `.rn-paper .rn-h${i + 1} { font-family: var(--fmt-${hl}-f
         if (popup) { choosePopup(); return; }
         let p = s.collapsed ? s.a : linesDelete(lines, s.a, s.b);
         const L = lines[p.line];
-        if (L.k === "text" && L.type === "paragraph" && inlPlain(L.content, null, "￼").trim() === "$$") {
-          const mathB = { id: genId(), type: "math", latex: "" };
-          lines.splice(p.line, 1, { k: "atom", type: "math", id: mathB.id, block: mathB });
-          if (!lines[p.line + 1]) lines.push(textLine("paragraph"));
-          editingMathId = mathB.id;
-          commit(lines, null, null, "struct");
-          const ta = blocksEl.querySelector("#ed-math-src"); if (ta) ta.focus();
+        // 빈 문단에서 "$$" 또는 "/수식" + Enter → 수식 입력 창
+        if (L.k === "text" && L.type === "paragraph" && /^(\$\$|\/수식)$/.test(inlPlain(L.content, null, "￼").trim())) {
+          L.content = [];
+          commit(lines, { line: p.line, off: 0 }, null, "struct");
+          openMathDialog({ mode: "display" });
           return;
         }
         p = linesSplit(lines, p);
@@ -2576,7 +2969,7 @@ ${HEADS.map((hl, i) => `.rn-paper .rn-h${i + 1} { font-family: var(--fmt-${hl}-f
       if (b.type === "code" || LINE_ATOMS.includes(b.type)) { closePopup(); return; }
       if (b.type === "paragraph") {
         const m = /^\$\$([^￼]+?)\$\$$/.exec(inlPlain(b.content, null, "￼").trim());
-        if (m) { replaceWithMath(b, m[1].trim()); return; }
+        if (m) { replaceWithMath(b, easyToLatex(m[1].trim())); return; }
       }
       const content = getContent(b, info.item);
       const [x, y] = splitInline(content, p.off);
@@ -2858,7 +3251,6 @@ ${HEADS.map((hl, i) => `.rn-paper .rn-h${i + 1} { font-family: var(--fmt-${hl}-f
       const capId = numbering.targetToCap.get(id);
       model.blocks = model.blocks.filter((x) => x.id !== id && !(capId && x.id === capId && ["figure", "table", "math"].includes(b.type)));
       if (!model.blocks.length) model.blocks.push(para());
-      if (editingMathId === id) editingMathId = null;
       syncDom(); afterChange("struct");
       const n = model.blocks[Math.min(i, model.blocks.length - 1)] || model.blocks[0];
       focusBlock(n.id, LINE_ATOMS.includes(n.type) ? null : 0);
@@ -2883,14 +3275,6 @@ ${HEADS.map((hl, i) => `.rn-paper .rn-h${i + 1} { font-family: var(--fmt-${hl}-f
       const i = idx(t.id);
       model.blocks.splice(captionPositions(rules)[kind] === "above" ? i : i + 1, 0, cap);
       syncDom(); afterChange("struct"); focusBlock(cap.id, 0);
-    }
-    function editMath(id) { if (blocked) return; editingMathId = id; syncDom(); const ta = blocksEl.querySelector("#ed-math-src"); if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); } }
-    function finishMath(id) {
-      editingMathId = null;
-      const b = find(id);
-      if (b && !b.latex.trim()) { deleteBlock(id); return; }
-      syncDom(); afterChange("struct");
-      const w = blkEl(id); if (w) w.focus();
     }
     /** 데이터 모듈이 만든 그래프(meta 있음)를 더블클릭·Enter → 데이터 패널을 열고 RN.data.editFigure(meta) */
     function openFigureData(id) {
@@ -2941,42 +3325,254 @@ ${HEADS.map((hl, i) => `.rn-paper .rn-h${i + 1} { font-family: var(--fmt-${hl}-f
       p = linesInsertNodes(lines, p, [node]);
       commit(lines, p, p, "struct");
     }
-    function insertLatexSnippet(latex) {
-      if (lastMathTa && lastMathTa.isConnected) {
-        const ta = lastMathTa, s = ta.selectionStart, e = ta.selectionEnd;
-        ta.value = ta.value.slice(0, s) + latex + ta.value.slice(e);
-        ta.focus(); ta.setSelectionRange(s + latex.length, s + latex.length);
-        ta.dispatchEvent(new Event("input"));
-        return;
-      }
-      insertAtomAtCaret({ t: "math", latex });
-    }
+    // ---------- 수식 입력 창 (넣기·고치기 모두 여기서) ----------
+    let mathDlg = null;
+    /** 블록 수식 고치기 */
+    function editMath(id) { const b = find(id); if (!b || blocked) return; openMathDialog({ edit: { kind: "block", id }, latex: b.latex }); }
+    /** 본문 안 인라인 수식 고치기 */
     function editInlineMath(span) {
       const slot = span.closest(".rn-slot"), blk = span.closest(".rn-blk");
       if (!slot || !blk) return;
       const li = lineIndex(blk.dataset.id, slot.dataset.item != null ? Number(slot.dataset.item) : 0);
       const off = offsetIn(slot, span.parentNode, [...span.parentNode.childNodes].indexOf(span), "start");
-      const input = h("input", { type: "text", id: "ed-im-src", value: span.dataset.latex || "", spellcheck: false });
-      const preview = h("div", { style: { minHeight: "1.6em", textAlign: "center" } });
-      setMath(preview, input.value, false);
-      input.addEventListener("input", () => setMath(preview, input.value, false));
-      const dlg = h("dialog", { class: "rn-dialog", "aria-label": "인라인 수식 고치기" });
-      const apply = (mode) => {
-        dlg.close(); dlg.remove();
-        if (mode === "cancel") { setSel({ line: li, off: off + 1 }); return; }
-        const lines = linesEdit();
-        const c = linesDelete(lines, { line: li, off }, { line: li, off: off + 1 });
-        const p = mode === "delete" || !input.value.trim() ? c : linesInsertNodes(lines, c, [{ t: "math", latex: input.value.trim() }]);
-        commit(lines, p, p, "struct");
-      };
-      dlg.append(h("form", { class: "rn-stack", onsubmit: (e) => { e.preventDefault(); apply("save"); } },
-        RN.field("LaTeX", input), preview,
+      openMathDialog({ edit: { kind: "inline", li, off }, latex: span.dataset.latex || "" });
+    }
+    /**
+     * opts: { edit?: {kind:"block", id} | {kind:"inline", li, off}, latex?, mode? }
+     * 쉬운 표기를 치면 easyToLatex로 바꿔 미리 보여 주고, "넣기"를 눌러야 문서에 들어간다.
+     */
+    function openMathDialog(opts) {
+      if (blocked || mathDlg) return;
+      opts = opts || {};
+      const edit = opts.edit || null;
+      // 열 때의 본문 선택을 기억해 두었다가 그 자리에 넣는다
+      const sel0 = edit ? null : curSel();
+      let prefill = "", fromSel = false;
+      let defaultMode = "display";
+      if (sel0) {
+        const L = linesNow()[sel0.a.line];
+        if (L && L.k === "text") {
+          let rest = L.content;
+          if (!sel0.collapsed && sel0.a.line === sel0.b.line) {
+            const [, r] = splitInline(L.content, sel0.a.off);
+            const [mid] = splitInline(r, sel0.b.off - sel0.a.off);
+            if (mid.length && mid.every((n) => n.t === "text")) { prefill = mid.map((n) => n.text).join("").trim(); fromSel = !!prefill; }
+            rest = fromSel ? [...splitInline(L.content, sel0.a.off)[0], ...splitInline(L.content, sel0.b.off)[1]] : L.content;
+          }
+          defaultMode = L.type === "paragraph" && !inlLen(rest) ? "display" : "inline";
+        }
+      }
+      const mode0 = opts.mode || (edit ? (edit.kind === "block" ? "display" : "inline") : defaultMode);
+      const startLatex = opts.latex != null ? String(opts.latex) : "";
+      const startEasy = prefill || (startLatex ? (latexToEasy(startLatex) ?? startLatex) : "");
+
+      let latexOverride = false;
+      let aiCtl = null;
+      const isDisplay = () => modeDisplay.checked;
+      const easy = h("input", { type: "text", id: "math-easy", value: startEasy, spellcheck: false, autocomplete: "off", placeholder: "예: (x+1)/2, x^2, sqrt(x), 알파", "aria-describedby": "math-easy-hint" });
+      const latexTa = h("textarea", { id: "math-latex", spellcheck: false, rows: 2 });
+      const preview = h("div", { class: "rn-mathdlg-preview", id: "math-preview", "aria-live": "polite", "aria-label": "미리보기" });
+      const hint = h("p", { class: "rn-small rn-mathdlg-warn", id: "math-hint", role: "status", hidden: true });
+      const overrideNote = h("small", { id: "math-latex-note", hidden: true }, "LaTeX를 직접 고쳤어요. 위 칸을 고치면 다시 바뀌어요.");
+      const submitBtn = h("button", { type: "submit", class: "rn-btn rn-primary", id: "math-insert" }, edit ? "고치기" : "넣기");
+      const modeInline = h("input", { type: "radio", name: "math-mode", id: "math-mode-inline", value: "inline", checked: mode0 === "inline" });
+      const modeDisplay = h("input", { type: "radio", name: "math-mode", id: "math-mode-display", value: "display", checked: mode0 === "display" });
+      const currentLatex = () => (latexOverride ? latexTa.value.trim() : easyToLatex(easy.value));
+
+      function render() {
+        const latex = currentLatex();
+        if (!latexOverride) latexTa.value = latex;
+        submitBtn.disabled = !latex;
+        hint.hidden = true;
+        if (!latex) { preview.replaceChildren(h("span", { class: "rn-muted rn-small" }, "여기에 수식이 보여요")); return; }
+        let err = null;
+        if (window.katex) { try { window.katex.renderToString(latex, { output: "mathml", throwOnError: true, displayMode: isDisplay() }); } catch (e) { err = e; } }
+        setMath(preview, latex, isDisplay());
+        if (err) {
+          const p = typeof err.position === "number" ? err.position : -1;
+          const shown = latexOverride || latex === easy.value.trim();
+          hint.textContent = "이 부분을 이해하지 못했어요" + (shown && p >= 0 ? `: “${latex.slice(Math.max(0, p - 8), p + 8)}”` : ". 괄호 짝이나 기호를 확인해 주세요.");
+          hint.hidden = false;
+        }
+      }
+      easy.addEventListener("input", () => { latexOverride = false; overrideNote.hidden = true; render(); });
+      latexTa.addEventListener("input", () => { latexOverride = true; overrideNote.hidden = false; render(); });
+      latexTa.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); form.requestSubmit(); } });
+      modeInline.addEventListener("change", render);
+      modeDisplay.addEventListener("change", render);
+
+      /** 입력란 커서 자리에 쉬운 표기 넣기. "▢" 자리: 첫 자리에 선택한 글자(없으면 빈칸을 골라 둔다) */
+      function insertTpl(t) {
+        const s = easy.selectionStart ?? easy.value.length, e = easy.selectionEnd ?? s;
+        const selected = easy.value.slice(s, e);
+        let text, selFrom, selTo;
+        if (t.base) { // 제곱처럼 고른 것을 밑으로
+          const base = !selected ? "" : /^[A-Za-z0-9.]+$/.test(selected) ? selected : "(" + selected + ")";
+          text = base + t.tpl; selFrom = selTo = text.length;
+        } else {
+          const slots = t.tpl.split("▢");
+          text = slots[0];
+          const marks = [];
+          for (let k = 1; k < slots.length; k++) {
+            const fill = k === 1 && selected ? selected : " ";
+            marks.push([text.length, text.length + fill.length, k === 1 && !!selected]);
+            text += fill + slots[k];
+          }
+          const target = marks.find((m) => !m[2]) || null;
+          if (target) { selFrom = target[0]; selTo = target[1]; } else selFrom = selTo = text.length;
+        }
+        easy.focus();
+        easy.setSelectionRange(s, e);
+        let ok = false;
+        try { ok = document.execCommand("insertText", false, text); } catch { ok = false; }
+        if (!ok || easy.value.slice(s, s + text.length) !== text) { easy.setRangeText(text, s, e, "end"); }
+        easy.setSelectionRange(s + selFrom, s + selTo);
+        easy.dispatchEvent(new Event("input"));
+      }
+      const MAIN = [
+        { label: "a/b", aria: "분수", tpl: "(▢)/(▢)" }, { label: "x²", aria: "제곱", tpl: "^2", base: true }, { label: "xₙ", aria: "아래 첨자", tpl: "_(▢)" },
+        { label: "√", aria: "제곱근", tpl: "sqrt(▢)" }, { label: "Σ", aria: "합", tpl: "sum(i=1, n, ▢)" }, { label: "∫", aria: "적분", tpl: "int(▢, ▢, ▢ dx)" },
+        { label: "lim", aria: "극한", tpl: "lim(x->▢, ▢)" }, { label: "v⃗", aria: "벡터", tpl: "vec(▢)" },
+        { label: "π", tpl: "π" }, { label: "±", tpl: "±" }, { label: "≤", tpl: "≤" }, { label: "≥", tpl: "≥" }, { label: "≠", tpl: "≠" }, { label: "≈", tpl: "≈" },
+        { label: "∞", tpl: "∞" }, { label: "×", tpl: "×" }, { label: "÷", tpl: "÷" }, { label: "°", aria: "도", tpl: "°" },
+      ];
+      const MORE = [
+        ...[..."αβγδθλμρσφωΔΣΩ"].map((g) => ({ label: g, tpl: g })),
+        { label: "|x|", aria: "절댓값", tpl: "|▢|" }, { label: "ⁿ√", aria: "n제곱근", tpl: "root(▢, ▢)" }, { label: "x̄", aria: "평균", tpl: "bar(▢)" }, { label: "ŷ", aria: "모자", tpl: "hat(▢)" },
+        { label: "→", tpl: "→" }, { label: "·", aria: "곱하기 점", tpl: "·" }, { label: "∂", tpl: "∂" }, { label: "( )", aria: "괄호", tpl: "(▢)" },
+        { label: "sin", tpl: "sin(▢)" }, { label: "cos", tpl: "cos(▢)" }, { label: "tan", tpl: "tan(▢)" }, { label: "log", tpl: "log(▢)" }, { label: "ln", tpl: "ln(▢)" },
+        { label: "℃", aria: "섭씨", tpl: "℃" },
+      ];
+      const tplBtn = (t) => h("button", { type: "button", class: "rn-btn", tabIndex: -1, title: t.aria ? `${t.aria}: ${t.tpl.replace(/▢/g, "□")}` : t.tpl, "aria-label": t.aria || t.label, onmousedown: pd, onclick: () => insertTpl(t) }, t.label);
+      const moreId = "math-more-row";
+      const moreBtn = h("button", { type: "button", class: "rn-btn rn-ghost", id: "math-more", tabIndex: -1, "aria-expanded": "false", "aria-controls": moreId, onmousedown: pd }, "더 보기");
+      const mainRow = h("div", { class: "rn-mathdlg-tpls", role: "toolbar", "aria-label": "자주 쓰는 수식 틀", id: "math-tpls" }, MAIN.map(tplBtn), moreBtn);
+      const moreRow = h("div", { class: "rn-mathdlg-tpls", role: "toolbar", "aria-label": "그 밖의 기호", id: moreId, hidden: true },
+        MORE.map(tplBtn),
+        h("p", { class: "rn-small rn-muted rn-mathdlg-cheat" }, "직접 칠 때: 분수 a/b · 제곱 x^2 · 첨자 a_1 · 루트 sqrt(x) · 그리스 문자 alpha 또는 알파 · <= >= != · 합 sum(i=1, n, a_i)"));
+      moreBtn.addEventListener("click", () => { const open = moreRow.hidden; moreRow.hidden = !open; moreBtn.setAttribute("aria-expanded", String(open)); moreBtn.textContent = open ? "접기" : "더 보기"; });
+      // 도구 모음 안은 화살표로 옮겨 다닌다(Tab 한 번에 다음 칸으로)
+      for (const row of [mainRow, moreRow]) {
+        const btns = () => [...row.querySelectorAll("button")];
+        btns()[0].tabIndex = 0;
+        row.addEventListener("keydown", (e) => {
+          const list = btns(), i = list.indexOf(document.activeElement);
+          if (i < 0) return;
+          const j = e.key === "ArrowRight" ? i + 1 : e.key === "ArrowLeft" ? i - 1 : e.key === "Home" ? 0 : e.key === "End" ? list.length - 1 : null;
+          if (j == null) return;
+          e.preventDefault();
+          const k = (j + list.length) % list.length;
+          list.forEach((b, n) => { b.tabIndex = n === k ? 0 : -1; });
+          list[k].focus();
+        });
+      }
+
+      // 말로 설명해서 만들기 (AI가 있을 때만)
+      const sample = RN.caps.sample;
+      let aiRow = null, aiToggle = null;
+      if (sample && !mathAiOff) {
+        const aiQ = h("input", { type: "text", id: "math-ai-q", placeholder: "예: 이차방정식 근의 공식", autocomplete: "off" });
+        const aiGo = h("button", { type: "button", class: "rn-btn", id: "math-ai-go" }, "만들기");
+        const aiStatus = h("p", { class: "rn-small rn-muted", id: "math-ai-status", role: "status" });
+        aiRow = h("div", { class: "rn-stack rn-mathdlg-ai", id: "math-ai-box", hidden: true, style: { gap: "6px" } },
+          h("div", { class: "rn-field" }, h("label", { for: "math-ai-q" }, "어떤 수식인가요?"), h("div", { class: "rn-row", style: { flexWrap: "nowrap" } }, aiQ, aiGo)), aiStatus);
+        aiToggle = h("button", { type: "button", class: "rn-btn rn-ghost rn-small", id: "math-ai-toggle", "aria-expanded": "false", "aria-controls": "math-ai-box" }, "말로 설명해서 만들기");
+        aiToggle.addEventListener("click", () => { const open = aiRow.hidden; aiRow.hidden = !open; aiToggle.setAttribute("aria-expanded", String(open)); if (open) aiQ.focus(); });
+        const run = async () => {
+          const q = aiQ.value.trim();
+          if (!q) { aiStatus.textContent = "어떤 수식인지 먼저 적어 주세요."; aiQ.focus(); return; }
+          if (RN.aiQuota && typeof RN.aiQuota.take === "function") {
+            let okQ = true;
+            try { okQ = await RN.aiQuota.take(); } catch { okQ = true; }
+            if (!okQ) { aiStatus.textContent = "오늘 쓸 수 있는 AI 요청을 모두 썼어요. 내일 다시 써 주세요."; return; }
+          }
+          aiCtl = new AbortController();
+          aiGo.disabled = true; aiStatus.textContent = "만드는 중…";
+          try {
+            const { text } = await sample(MATH_AI_PROMPT(q), { modelTier: "quick", signal: aiCtl.signal });
+            const latex = cleanAiLatex(text);
+            if (!latex) { aiStatus.textContent = "수식을 받지 못했어요. 다르게 설명해 보세요."; return; }
+            easy.value = latexToEasy(latex) ?? latex;
+            latexOverride = false; overrideNote.hidden = true;
+            render();
+            aiStatus.textContent = "만들었어요. 미리보기를 확인하고 ‘" + submitBtn.textContent + "’를 누르세요.";
+            easy.focus();
+          } catch (e) {
+            const code = e && e.code;
+            if (code === "cancelled") { aiStatus.textContent = ""; return; }
+            if (MATH_AI_HIDE.has(code)) { mathAiOff = true; aiStatus.textContent = "이 화면에서는 AI 기능을 쓸 수 없어요."; aiToggle.hidden = true; return; }
+            aiStatus.textContent = mathAiError(code);
+          } finally { aiGo.disabled = false; aiCtl = null; }
+        };
+        aiGo.addEventListener("click", run);
+        aiQ.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); run(); } });
+      }
+
+      const titleText = edit ? "수식 고치기" : "수식 넣기";
+      const modeBox = h("fieldset", { class: "rn-mathdlg-mode", hidden: !!edit },
+        h("legend", { class: "rn-small" }, "넣는 방식"),
+        h("label", { class: "rn-row", style: { gap: "6px", flexWrap: "nowrap" } }, modeInline, "글 안에 넣기"),
+        h("label", { class: "rn-row", style: { gap: "6px", flexWrap: "nowrap" } }, modeDisplay, "한 줄로 넣기 (번호 붙음)"));
+      const form = h("form", { class: "rn-stack", onsubmit: (e) => { e.preventDefault(); apply("save"); } },
+        h("h2", { id: "math-dlg-title" }, titleText),
+        mainRow, moreRow,
+        h("div", { class: "rn-field" },
+          h("div", { class: "rn-row rn-between" }, h("label", { for: "math-easy" }, "수식"), aiToggle),
+          easy,
+          h("small", { id: "math-easy-hint" }, "평소 쓰는 대로 쳐요. 예: (x+1)/(x-1), x^2, 루트(x), 알파, <=  (LaTeX도 돼요)")),
+        aiRow,
+        preview, hint,
+        h("details", { class: "rn-mathdlg-latex", id: "math-latex-more" }, h("summary", {}, "LaTeX 보기"),
+          h("div", { class: "rn-field" }, h("label", { for: "math-latex" }, "LaTeX (직접 고칠 수 있어요)"), latexTa, overrideNote)),
+        modeBox,
         h("div", { class: "rn-row rn-end" },
-          h("button", { type: "button", class: "rn-btn rn-danger", onclick: () => apply("delete") }, "지우기"),
-          h("button", { type: "button", class: "rn-btn", onclick: () => apply("cancel") }, "취소"),
-          h("button", { type: "submit", class: "rn-btn rn-primary" }, "적용"))));
+          edit ? h("button", { type: "button", class: "rn-btn rn-danger", id: "math-delete", onclick: () => apply("delete") }, "지우기") : null,
+          h("button", { type: "button", class: "rn-btn", id: "math-cancel", onclick: () => apply("cancel") }, "닫기"),
+          submitBtn));
+      const dlg = h("dialog", { class: "rn-dialog rn-mathdlg", id: "math-dlg", "aria-labelledby": "math-dlg-title" }, form);
       dlg.addEventListener("cancel", (e) => { e.preventDefault(); apply("cancel"); });
-      document.body.append(dlg); dlg.showModal(); input.focus();
+      mathDlg = dlg;
+
+      function apply(action) {
+        if (!mathDlg) return;
+        const latex = currentLatex();
+        if (aiCtl) { try { aiCtl.abort(); } catch { /* 무시 */ } }
+        mathDlg = null;
+        dlg.close(); dlg.remove();
+        if (action === "save" && !latex) action = "cancel";
+        if (edit && edit.kind === "block") {
+          const b = find(edit.id);
+          if (b && action === "delete") { deleteBlock(edit.id); return; }
+          if (b && action === "save" && b.latex !== latex) { b.latex = latex; syncDom(); afterChange("struct"); }
+          const w = blkEl(edit.id); if (w) w.focus(); else blocksEl.focus();
+          return;
+        }
+        if (edit && edit.kind === "inline") {
+          if (action === "cancel") { setSel({ line: edit.li, off: edit.off + 1 }); return; }
+          const lines = linesEdit();
+          const c = linesDelete(lines, { line: edit.li, off: edit.off }, { line: edit.li, off: edit.off + 1 });
+          const p = action === "delete" ? c : linesInsertNodes(lines, c, [{ t: "math", latex }]);
+          commit(lines, p, p, "struct");
+          return;
+        }
+        // 새로 넣기: 연 자리로 돌아간다
+        if (sel0) setSel(sel0.a, sel0.b); else blocksEl.focus();
+        if (action !== "save") return;
+        if (sel0 && !sel0.collapsed) {
+          if (fromSel) { const lines = linesEdit(); const p = linesDelete(lines, sel0.a, sel0.b); commit(lines, p, p, "struct"); }
+          else setSel(sel0.b);
+        }
+        if (isDisplay()) {
+          const m = insertBlocks([{ id: genId(), type: "math", latex }])[0];
+          if (!root.contains(document.activeElement) || document.activeElement === document.body) { const w = blkEl(m.id); if (w) w.focus(); }
+        } else insertAtomAtCaret({ t: "math", latex });
+      }
+
+      document.body.append(dlg);
+      dlg.showModal();
+      render();
+      easy.focus();
+      if (fromSel) easy.select(); else easy.setSelectionRange(easy.value.length, easy.value.length);
     }
 
     // ---------- 도구 모음 (한 줄) ----------
@@ -3003,20 +3599,6 @@ ${HEADS.map((hl, i) => `.rn-paper .rn-h${i + 1} { font-family: var(--fmt-${hl}-f
       if (f.type === "image/svg+xml") reader.readAsText(f); else reader.readAsDataURL(f);
       fileInput.value = "";
     } });
-    // 수식 팔레트
-    const palette = h("div", { class: "rn-palette", id: "ed-palette", role: "group", "aria-label": "수식 팔레트", hidden: true },
-      PALETTE.map(([label, latex]) => h("button", { type: "button", class: "rn-btn", title: latex, "aria-label": label + " " + latex, onmousedown: pd, onclick: () => { if (!blocked) insertLatexSnippet(latex); closePalette(false); } }, label)));
-    palette.addEventListener("keydown", (e) => {
-      const bs = [...palette.querySelectorAll("button")], i = bs.indexOf(document.activeElement);
-      if (e.key === "Escape") { e.preventDefault(); closePalette(true); }
-      else if (i >= 0 && ["ArrowRight", "ArrowLeft", "ArrowDown", "ArrowUp"].includes(e.key)) {
-        e.preventDefault();
-        const d = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: 4, ArrowUp: -4 }[e.key];
-        bs[(i + d + bs.length) % bs.length].focus();
-      }
-    });
-    function openPalette(viaKey) { palette.hidden = false; if (viaKey) palette.querySelector("button").focus(); }
-    function closePalette(returnFocus) { if (palette.hidden) return; palette.hidden = true; if (returnFocus) insertBtn.focus(); }
     // 삽입 메뉴
     const insertTable = () => {
       const t = insertBlocks([{ id: genId(), type: "table", header: true, rows: [["항목", "값", "비고"], ["", "", ""], ["", "", ""]] }])[0];
@@ -3026,8 +3608,7 @@ ${HEADS.map((hl, i) => `.rn-paper .rn-h${i + 1} { font-family: var(--fmt-${hl}-f
     const MENU = [
       ["tb-table", "표", insertTable],
       ["tb-image", "그림…", () => fileInput.click()],
-      ["tb-math", "수식", () => { const m = insertBlocks([{ id: genId(), type: "math", latex: "" }])[0]; editMath(m.id); }],
-      ["tb-palette", "수식 팔레트", (viaKey) => openPalette(viaKey)],
+      ["tb-math", "수식", () => openMathDialog()],
       null,
       ["tb-caption", "캡션", () => addCaption()],
       ["tb-toc-fig", "그림 목차", () => insertBlocks([{ id: genId(), type: "toc", kind: "figure" }])],
@@ -3048,7 +3629,6 @@ ${HEADS.map((hl, i) => `.rn-paper .rn-h${i + 1} { font-family: var(--fmt-${hl}-f
       menuButtons.push(b); menu.append(b);
     }
     function openMenu(focusIdx) {
-      closePalette(false);
       menu.hidden = false; insertBtn.setAttribute("aria-expanded", "true");
       menu.style.left = "0"; menu.style.right = "auto";
       const r = menu.getBoundingClientRect();
@@ -3077,7 +3657,6 @@ ${HEADS.map((hl, i) => `.rn-paper .rn-h${i + 1} { font-family: var(--fmt-${hl}-f
     });
     listen(document, "mousedown", (e) => {
       if (!menu.hidden && !menu.contains(e.target) && e.target !== insertBtn) closeMenu(false);
-      if (!palette.hidden && !palette.contains(e.target) && !menu.contains(e.target)) closePalette(false);
     });
     const sep = () => h("span", { class: "sep", "aria-hidden": "true" });
     toolbar.append(
@@ -3087,10 +3666,11 @@ ${HEADS.map((hl, i) => `.rn-paper .rn-h${i + 1} { font-family: var(--fmt-${hl}-f
       tbBtn("tb-ul", "목록", () => setBlockType("list", false), { title: "글머리 목록" }), sep(),
       tbBtn("tb-undo", "↶", undo, { aria: "실행 취소", title: "실행 취소 (Ctrl+Z)" }),
       tbBtn("tb-redo", "↷", redo, { aria: "다시 실행", title: "다시 실행 (Ctrl+Shift+Z)" }), sep(),
-      h("span", { class: "rn-menu-wrap" }, insertBtn, menu), fileInput, palette);
+      h("span", { class: "rn-menu-wrap" }, insertBtn, menu), fileInput);
     listen(document, "keydown", (e) => {
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "c" && root.contains(document.activeElement)) { e.preventDefault(); addCaption(); }
-      if (e.key === "Escape" && !palette.hidden && !palette.contains(document.activeElement)) closePalette(false);
+      // Ctrl/Cmd+Shift+E: 수식 입력 창
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === "e" && !mathDlg && !blocked && (root.contains(document.activeElement) || document.activeElement === document.body)) { e.preventDefault(); openMathDialog(); }
     });
 
     // ---------- 오른쪽 패널 (기본 접힘, 위 버튼으로 연다) ----------
@@ -3327,7 +3907,7 @@ ${HEADS.map((hl, i) => `.rn-paper .rn-h${i + 1} { font-family: var(--fmt-${hl}-f
       if (!(await RN.confirm(`${RN.fmtDateTime(v.createdAt)} 버전으로 되돌릴까요? 지금 내용은 버전 기록에 남겨 둬요.`, { okLabel: "복원" }))) return;
       try {
         await snapshot("AUTO", "복원 전");
-        model = normalizeDoc(v.content); editingMathId = null; syncDom(); afterChange("struct");
+        model = normalizeDoc(v.content); syncDom(); afterChange("struct");
         await ctrl.flush();
         RN.toast("복원했어요."); drawHistory();
       } catch (e) { RN.toast(errText(e), "error"); }
@@ -3439,7 +4019,7 @@ ${HEADS.map((hl, i) => `.rn-paper .rn-h${i + 1} { font-family: var(--fmt-${hl}-f
     editor: {
       normalizeDoc, normInline, splitInline, computeNumbering, resolveRef, parseRefTrigger, filterRefTargets, captionList,
       normalizeRules, resolveFont, formatCssVars, PRESETS, DEFAULT_RULES, checkFormat, fixFormat,
-      documentToMarkdown, bodyHtml, exportHtmlDocument, markdownToBlocks, textToBlocks, sanitizeSvg, sanitizeHtml, convertInlineMath,
+      documentToMarkdown, bodyHtml, exportHtmlDocument, markdownToBlocks, textToBlocks, sanitizeSvg, sanitizeHtml, convertInlineMath, easyToLatex, latexToEasy,
       AutosaveController, SaveConflictError, SaveOfflineError, decideDraft, paths: P,
       documentToDocx, zipStore, crc32, flattenBlocks, unflattenLines, linesDelete, linesSplit, linesInsertMulti, linesToggleMark, linesSetType, linesText,
     },

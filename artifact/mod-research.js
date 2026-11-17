@@ -93,7 +93,7 @@
 
   /** 공유 데이터 상태 안내. 보여 줄 수 있으면 null */
   function sharedBlocked(s, which) {
-    if (s.error === "signed_out" || !RN.caps.db) return RN.notice("연구와 고충은 Claude에 로그인한 사람에게만 보여요. 로그인한 뒤 다시 열어 주세요.", "warn");
+    if (s.error === "signed_out") return RN.notice("연구와 고충은 Claude에 로그인한 사람에게만 보여요. 로그인한 뒤 다시 열어 주세요.", "warn");
     if (!s.loaded[which]) return RN.notice("불러오는 중…");
     if (s.error === "timeout" && !(s[which] || []).length) return RN.notice("데이터에 연결하지 못했어요. 잠시 뒤 다시 열어 주세요.", "error");
     if (s.error && s.error !== "timeout" && !(s[which] || []).length) return RN.notice("데이터를 불러오지 못했어요 (" + s.error + ").", "error");

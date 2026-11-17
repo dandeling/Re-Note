@@ -493,9 +493,11 @@ function mkPain(i, over = {}) {
     await test("비로그인(?anon=1)은 읽기 전용 안내", async () => {
       const ctx = await newContext();
       const page = await open(ctx, "anon=1");
-      await page.waitForSelector("#rn-view .rn-notice");
+      // 연결되지 않은 화면: 안내 띠가 뜨고, 예시 글 목록은 읽을 수 있지만 글쓰기는 없다
+      await page.waitForSelector("#rn-banner:not([hidden])");
+      assert.match(await page.locator("#rn-banner").innerText(), /둘러보기/);
+      await page.waitForFunction(() => document.querySelector("#rn-view").innerText.includes("예시"));
       assert.equal(await page.locator("#pains-new").count(), 0);
-      assert.match(await page.locator("#rn-view").innerText(), /로그인/);
       await go(page, "pain-edit", {});
       assert.equal(await page.locator("#pain-title").count(), 0);
       assert.match(await page.locator("#rn-view").innerText(), /로그인/);

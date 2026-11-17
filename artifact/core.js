@@ -134,13 +134,25 @@
   }
 
   // ---------- 공유 컬렉션 구독 (research, pains) ----------
-  const shared = { research: [], pains: [], loaded: { research: false, pains: false }, error: null };
+  const shared = { research: [], pains: [], loaded: { research: false, pains: false }, error: null, examplesOnly: false };
   const sharedListeners = new Set();
   const emitShared = () => sharedListeners.forEach((fn) => { try { fn(shared); } catch (e) { console.error(e); } });
   /** 공유 데이터가 바뀔 때마다 fn(shared)를 부른다. 등록 즉시 한 번 부른다. 해제 함수를 돌려준다. */
   function onShared(fn) { sharedListeners.add(fn); fn(shared); return () => sharedListeners.delete(fn); }
   ready.then(({ db }) => {
-    if (!db) { shared.loaded.research = shared.loaded.pains = true; shared.error = "signed_out"; emitShared(); return; }
+    if (!db) {
+      // 데이터에 연결할 수 없는 화면(공개 링크로 단독으로 연 페이지, 주인의 조직 밖 계정 등)에서는
+      // 함께 게시한 예시 데이터(seed.json)를 읽기 전용으로 보여 준다.
+      shared.examplesOnly = true;
+      fetch("seed.json").then((r) => (r.ok ? r.json() : Promise.reject(new Error("seed")))).then((docs) => {
+        for (const [path, doc] of Object.entries(docs)) {
+          const [coll, id] = path.split("/");
+          if ((coll === "research" || coll === "pains") && id) shared[coll].push({ id, ...doc });
+        }
+        shared.error = null;
+      }).catch(() => { shared.error = "signed_out"; }).finally(() => { shared.loaded.research = shared.loaded.pains = true; emitShared(); });
+      return;
+    }
     for (const name of ["research", "pains"]) {
       const timer = setTimeout(() => { if (!shared.loaded[name]) { shared.loaded[name] = true; shared.error = "timeout"; emitShared(); } }, 10000);
       db.collection(name).limit(1000).onSnapshot(
@@ -190,10 +202,17 @@
   // ---------- 공통 조각 ----------
   /** 로딩·비어 있음·오류 안내 한 줄 */
   const notice = (text, kind) => h("p", { class: "rn-notice" + (kind ? " rn-" + kind : ""), role: kind === "error" ? "alert" : "status" }, text);
+  /** 이 화면이 단독 페이지로 열렸는지(= claude.ai 안의 아티팩트 보기 화면이 아닌지) */
+  function isStandalone() { try { return window.top === window.self; } catch { return false; } }
+  /** 데이터에 연결되지 않은 이유를 한 문장으로. (Claude에 로그인했어도 연결되지 않는 경우가 있다.) */
+  function connectionHelp() {
+    return isStandalone()
+      ? "지금은 둘러보기만 할 수 있어요. 이 주소를 직접 열면 Claude 로그인 정보가 전달되지 않아요. claude.ai의 아티팩트 화면에서 열어 주세요."
+      : "지금은 둘러보기만 할 수 있어요. Claude에 로그인했더라도, 이 아티팩트를 만든 사람의 조직 계정이거나 초대받은 계정이어야 글을 쓰고 내 프로젝트를 만들 수 있어요.";
+  }
   /** 로그인하지 않았거나 쓰기 권한이 없을 때 보여 줄 문구. 쓸 수 있으면 null. */
   function writeBlockedReason() {
-    if (!caps.db) return "이 화면은 Claude에 로그인한 사람에게만 데이터를 보여 줍니다.";
-    if (!caps.uid) return "로그인한 뒤에 쓸 수 있어요.";
+    if (!caps.db || !caps.uid) return connectionHelp();
     if (!caps.canWrite) return "보기 권한만 있어 쓸 수 없어요. 아티팩트 주인에게 참여 권한을 요청하세요.";
     return null;
   }
@@ -210,7 +229,7 @@
     caps, ready, userPath, userColl, userDoc, names,
     shared, onShared,
     view, go, start, get current() { return current; },
-    notice, writeBlockedReason, badge, field,
+    notice, writeBlockedReason, connectionHelp, isStandalone, badge, field,
     STAGES: { TOPIC: "주제선정", DESIGN: "설계", EXPERIMENT: "실험", ANALYSIS: "분석", REPORT: "보고서작성", OTHER: "기타" },
     // 아래는 모듈이 채운다 (CONTRACT.md 참고). 없을 수 있으니 쓰는 쪽에서 확인한다.
     search: null, // research 모듈: (query, {limit}) => { research: [...], pains: [...] }
