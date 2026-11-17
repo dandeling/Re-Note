@@ -1,0 +1,397 @@
+// SPEC.md 6장 데이터 모델. Auth.js 어댑터 모델(Account, Session, VerificationToken)과
+// 휴지통·보관·신고용 필드는 SPEC 7.1/7.6 요구를 위해 추가했다 (docs/decisions.md 참고).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Visibility {
+  PRIVATE
+  PUBLIC
+}
+
+enum SnapshotReason {
+  AUTO
+  MANUAL
+  IMPORT
+}
+
+enum AssetKind {
+  IMAGE
+  PDF
+  HWP
+  HWPX
+  CSV
+  OTHER
+}
+
+enum ConversionType {
+  HWP_TO_PDF
+  IMPORT_HWP
+  IMPORT_PDF
+  IMPORT_DOCX
+  IMPORT_MD
+}
+
+enum JobStatus {
+  QUEUED
+  RUNNING
+  DONE
+  FAILED
+}
+
+/// 주제선정 | 설계 | 실험 | 분석 | 보고서작성 | 기타 (표시 문구는 messages/ko.json)
+enum PainStage {
+  TOPIC
+  DESIGN
+  EXPERIMENT
+  ANALYSIS
+  REPORT
+  OTHER
+}
+
+enum ReactionType {
+  ME_TOO
+}
+
+enum ChatRole {
+  user
+  assistant
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  emailVerified DateTime?
+  name          String?
+  image         String?
+  createdAt     DateTime  @default(now())
+
+  accounts        Account[]
+  sessions        Session[]
+  projects        Project[]
+  formatTemplates FormatTemplate[]
+  assets          Asset[]
+  conversionJobs  ConversionJob[]
+  researches      Research[]
+  painPosts       PainPost[]
+  comments        Comment[]
+  reactions       Reaction[]
+  painReports     PainReport[]
+  chatThreads     ChatThread[]
+  aiUsages        AiUsage[]
+}
+
+model Account {
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([provider, providerAccountId])
+}
+
+model Session {
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@id([identifier, token])
+}
+
+model Project {
+  id          String     @id @default(cuid())
+  ownerId     String
+  title       String
+  description String     @default("")
+  field       String     @default("")
+  keywords    String[]
+  visibility  Visibility @default(PRIVATE)
+  archivedAt  DateTime?
+  deletedAt   DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  owner       User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  documents   Document[]
+  assets      Asset[]
+  datasets    Dataset[]
+  researches  Research[]
+  painPosts   PainPost[]
+  chatThreads ChatThread[]
+
+  @@index([ownerId, deletedAt])
+}
+
+model Document {
+  id               String    @id @default(cuid())
+  projectId        String
+  title            String
+  contentJson      Json
+  formatTemplateId String?
+  version          Int       @default(1)
+  deletedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  project        Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  formatTemplate FormatTemplate?    @relation(fields: [formatTemplateId], references: [id], onDelete: SetNull)
+  snapshots      DocumentSnapshot[]
+  chatThreads    ChatThread[]
+
+  @@index([projectId, deletedAt])
+}
+
+model DocumentSnapshot {
+  id          String         @id @default(cuid())
+  documentId  String
+  contentJson Json
+  version     Int
+  reason      SnapshotReason
+  createdAt   DateTime       @default(now())
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId, createdAt])
+}
+
+model FormatTemplate {
+  id        String   @id @default(cuid())
+  ownerId   String?
+  name      String
+  rulesJson Json
+  isPreset  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  owner     User?      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  documents Document[]
+
+  @@index([ownerId])
+}
+
+model Asset {
+  id         String    @id @default(cuid())
+  projectId  String?
+  ownerId    String?
+  kind       AssetKind
+  storageKey String    @unique
+  filename   String
+  size       Int
+  mime       String
+  deletedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  project        Project?        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  owner          User?           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  datasets       Dataset[]
+  inputForJobs   ConversionJob[] @relation("JobInput")
+  outputForJobs  ConversionJob[] @relation("JobOutput")
+  reportResearch Research[]
+
+  @@index([projectId, deletedAt])
+  @@index([ownerId])
+}
+
+model Dataset {
+  id          String   @id @default(cuid())
+  projectId   String
+  assetId     String
+  name        String
+  columnsJson Json
+  rowCount    Int
+  createdAt   DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  asset   Asset   @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+model ConversionJob {
+  id            String         @id @default(cuid())
+  ownerId       String?
+  inputAssetId  String
+  outputAssetId String?
+  type          ConversionType
+  status        JobStatus      @default(QUEUED)
+  error         String?
+  /// 작업 입력값 (가져오기: projectId, documentId, title)
+  params        Json?
+  /// 작업 결과 (엔진, 쪽수, 시도 내역, 가져오기: documentId, 품질 안내 코드 등)
+  result        Json?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  owner       User?  @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  inputAsset  Asset  @relation("JobInput", fields: [inputAssetId], references: [id], onDelete: Cascade)
+  outputAsset Asset? @relation("JobOutput", fields: [outputAssetId], references: [id], onDelete: SetNull)
+
+  @@index([ownerId])
+}
+
+model Research {
+  id            String                 @id @default(cuid())
+  projectId     String?
+  authorId      String
+  title         String
+  summary       String
+  field         String                 @default("")
+  keywords      String[]
+  limitations   String                 @default("")
+  reportAssetId String?
+  embedding     Unsupported("vector")?
+  publishedAt   DateTime               @default(now())
+
+  project     Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  author      User       @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  reportAsset Asset?     @relation(fields: [reportAssetId], references: [id], onDelete: SetNull)
+  painPosts   PainPost[]
+
+  @@index([authorId])
+}
+
+model PainPost {
+  id          String                 @id @default(cuid())
+  authorId    String
+  researchId  String?
+  projectId   String?
+  title       String
+  body        String
+  stage       PainStage              @default(OTHER)
+  field       String                 @default("")
+  tags        String[]
+  isAnonymous Boolean                @default(false)
+  resolved    Boolean                @default(false)
+  resolution  String?
+  embedding   Unsupported("vector")?
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+
+  author    User         @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  research  Research?    @relation(fields: [researchId], references: [id], onDelete: SetNull)
+  project   Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  comments  Comment[]
+  reactions Reaction[]
+  reports   PainReport[]
+
+  @@index([authorId])
+  @@index([researchId])
+  @@index([createdAt])
+}
+
+model Comment {
+  id         String   @id @default(cuid())
+  painPostId String
+  authorId   String
+  body       String
+  createdAt  DateTime @default(now())
+
+  painPost PainPost @relation(fields: [painPostId], references: [id], onDelete: Cascade)
+  author   User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([painPostId, createdAt])
+}
+
+model Reaction {
+  id         String       @id @default(cuid())
+  painPostId String
+  userId     String
+  type       ReactionType @default(ME_TOO)
+
+  painPost PainPost @relation(fields: [painPostId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([painPostId, userId])
+}
+
+/// 신고: 관리자 검토용 플래그만 저장 (SPEC 7.1)
+model PainReport {
+  id         String   @id @default(cuid())
+  painPostId String
+  reporterId String?
+  reason     String   @default("")
+  createdAt  DateTime @default(now())
+
+  painPost PainPost @relation(fields: [painPostId], references: [id], onDelete: Cascade)
+  reporter User?    @relation(fields: [reporterId], references: [id], onDelete: SetNull)
+
+  @@index([painPostId])
+}
+
+model ChatThread {
+  id         String   @id @default(cuid())
+  userId     String
+  projectId  String?
+  documentId String?
+  title      String   @default("")
+  createdAt  DateTime @default(now())
+
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project  Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  document Document?     @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  messages ChatMessage[]
+
+  @@index([userId, createdAt])
+}
+
+model ChatMessage {
+  id            String   @id @default(cuid())
+  threadId      String
+  role          ChatRole
+  content       String
+  citationsJson Json?
+  createdAt     DateTime @default(now())
+
+  thread ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, createdAt])
+}
+
+/// AI 호출 기록 (사용자별 일일 한도 계산용). 내용은 저장하지 않는다.
+model AiUsage {
+  id        String   @id @default(cuid())
+  userId    String
+  kind      String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+/// 검색 색인(SPEC 7.2). Research·PainPost의 DB 트리거가 관리하므로 애플리케이션에서 직접 쓰지 않는다.
+/// titleNorm/bodyNorm은 rm_search_normalize()로 정규화한 텍스트(한글 자모 분해 → ASCII). docs/decisions.md search-1
+model SearchDocument {
+  kind      String
+  refId     String
+  titleNorm String @default("")
+  bodyNorm  String @default("")
+
+  @@id([kind, refId])
+}

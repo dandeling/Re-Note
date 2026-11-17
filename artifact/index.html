@@ -1,0 +1,206 @@
+<title>Re;Note</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hahmlet:wght@500;600;700&family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;700&family=Noto+Serif+KR:wght@400;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  /* 레이아웃: 위에 고정 메뉴, 아래에 화면 하나. 연구 노트의 느낌 — 잉크색 글자, 차가운 종이, 형광펜 한 줄. 색·글꼴은 전부 이 토큰에서 나온다. */
+  :root {
+    --bg: #f3f5fa; --surface: #ffffff; --surface-2: #eaeef7; --fg: #121a2e; --muted: #586379; --line: #dce2ee;
+    --accent: #2343d3; --accent-fg: #ffffff; --accent-soft: #e6ebff;
+    --ok: #0b6a48; --ok-soft: #dcf3e8; --warn: #855000; --warn-soft: #fcefd2; --danger: #b3261e; --danger-soft: #fde8e5;
+    --highlight: #ffe45e; --highlight-fg: #121a2e;
+    --paper: #ffffff; --paper-fg: #111827; --desk: #e6eaf3;
+    --shadow: 0 1px 2px rgb(18 26 46 / 0.05), 0 6px 20px rgb(18 26 46 / 0.06);
+    --font-display: "Hahmlet", "Noto Serif KR", "Apple SD Gothic Neo", "Malgun Gothic", serif;
+    --font-body: "IBM Plex Sans KR", "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+    --radius: 8px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0c101b; --surface: #141a2a; --surface-2: #1c2438; --fg: #e9edf8; --muted: #9ba7c1; --line: #28324e;
+      --accent: #9db4ff; --accent-fg: #0c101b; --accent-soft: #1b2853;
+      --ok: #7fd8b1; --ok-soft: #12362a; --warn: #f1c069; --warn-soft: #3b2e10; --danger: #ff9b8f; --danger-soft: #431f1b;
+      --highlight: #8a7400; --highlight-fg: #fff6c9;
+      --paper: #ffffff; --paper-fg: #111827; --desk: #070a12;
+      --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px rgb(0 0 0 / 0.28);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0c101b; --surface: #141a2a; --surface-2: #1c2438; --fg: #e9edf8; --muted: #9ba7c1; --line: #28324e;
+    --accent: #9db4ff; --accent-fg: #0c101b; --accent-soft: #1b2853;
+    --ok: #7fd8b1; --ok-soft: #12362a; --warn: #f1c069; --warn-soft: #3b2e10; --danger: #ff9b8f; --danger-soft: #431f1b;
+    --highlight: #8a7400; --highlight-fg: #fff6c9;
+    --paper: #ffffff; --paper-fg: #111827; --desk: #070a12;
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px rgb(0 0 0 / 0.28);
+    color-scheme: dark;
+  }
+
+  body { background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15px; line-height: 1.65; -webkit-font-smoothing: antialiased; word-break: keep-all; overflow-wrap: anywhere; }
+  body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--surface); }
+  * { box-sizing: border-box; }
+  ::selection { background: var(--highlight); color: var(--highlight-fg); }
+  h1, h2, h3 { line-height: 1.3; margin: 0; text-wrap: balance; }
+  h1 { font-family: var(--font-display); font-size: 1.75rem; font-weight: 700; letter-spacing: -0.02em; }
+  h2 { font-family: var(--font-body); font-size: 1.12rem; font-weight: 600; letter-spacing: -0.01em; }
+  h3 { font-family: var(--font-body); font-size: 1rem; font-weight: 600; }
+  h1:focus { outline: none; }
+  p { margin: 0; }
+  a { color: var(--accent); text-underline-offset: 3px; text-decoration-thickness: 1px; }
+  a:hover { text-decoration-thickness: 2px; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+  mark { background: linear-gradient(transparent 58%, var(--highlight) 58%); color: inherit; padding: 0 2px; }
+
+  #rn-header { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 9; background: var(--surface); border-bottom: 1px solid var(--line); }
+  #rn-header .inner, #rn-view { max-width: 1120px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  #rn-header .inner { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 20px; padding-block: 11px; }
+  #rn-brand { font-family: var(--font-display); font-weight: 700; font-size: 1.3rem; letter-spacing: -0.02em; color: var(--fg); text-decoration: none; line-height: 1; }
+  #rn-brand .semi { color: var(--accent); }
+  #rn-nav { display: flex; flex-wrap: wrap; gap: 2px; flex: 1; }
+  #rn-nav a { color: var(--muted); text-decoration: none; padding: 5px 12px; border-radius: 999px; font-size: 0.92rem; font-weight: 500; }
+  #rn-nav a:hover { color: var(--fg); background: var(--surface-2); }
+  #rn-nav a[aria-current="page"] { background: var(--accent-soft); color: var(--accent); }
+  #rn-me { font-size: 0.82rem; color: var(--muted); padding: 3px 10px; border: 1px solid var(--line); border-radius: 999px; }
+  #rn-me:empty { display: none; }
+  #rn-view { padding-block: 32px 96px; display: flex; flex-direction: column; gap: 24px; min-height: 60vh; }
+  body[data-view="editor"] #rn-view { max-width: 1320px; }
+
+  /* 공통 부품 (모듈은 이 클래스를 그대로 쓴다) */
+  .rn-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .rn-end { justify-content: flex-end; }
+  .rn-between { justify-content: space-between; }
+  .rn-stack { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .rn-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 16px; }
+  .rn-card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 8px; min-width: 0; box-shadow: var(--shadow); }
+  .rn-paper { box-shadow: var(--shadow); }
+  .rn-muted { color: var(--muted); } .rn-small { font-size: 0.85rem; }
+  .rn-btn { font: inherit; font-size: 0.9rem; font-weight: 500; line-height: 1.3; padding: 7px 14px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--surface); color: var(--fg); cursor: pointer; }
+  .rn-btn:hover { background: var(--surface-2); border-color: var(--muted); }
+  .rn-btn:active { transform: translateY(1px); }
+  .rn-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+  .rn-btn.rn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); font-weight: 600; box-shadow: 0 1px 2px rgb(18 26 46 / 0.18); }
+  .rn-btn.rn-primary:hover { filter: brightness(1.08); background: var(--accent); border-color: var(--accent); }
+  .rn-btn.rn-danger { background: var(--danger-soft); border-color: transparent; color: var(--danger); }
+  .rn-btn.rn-danger:hover { border-color: var(--danger); background: var(--danger-soft); }
+  .rn-btn.rn-ghost { border-color: transparent; background: none; }
+  .rn-btn.rn-ghost:hover { background: var(--surface-2); }
+  .rn-btn[aria-pressed="true"] { background: var(--accent-soft); border-color: transparent; color: var(--accent); }
+  .rn-link { font: inherit; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; text-align: left; }
+  .rn-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+  .rn-field label { font-size: 0.84rem; font-weight: 600; color: var(--fg); }
+  .rn-field small { color: var(--muted); font-size: 0.8rem; }
+  input[type="text"], input[type="search"], input[type="number"], input[type="email"], select, textarea {
+    font: inherit; color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 12px; width: 100%; min-width: 0;
+  }
+  input[type="text"]:hover, input[type="search"]:hover, input[type="number"]:hover, select:hover, textarea:hover { border-color: var(--muted); }
+  input[type="text"]:focus, input[type="search"]:focus, input[type="number"]:focus, input[type="email"]:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  input::placeholder, textarea::placeholder { color: var(--muted); opacity: 0.8; }
+  textarea { min-height: 96px; resize: vertical; line-height: 1.6; }
+  input[type="file"] { font: inherit; font-size: 0.88rem; color: var(--muted); max-width: 100%; }
+  input[type="file"]::file-selector-button { font: inherit; font-weight: 500; margin-right: 10px; padding: 6px 12px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--surface); color: var(--fg); cursor: pointer; }
+  input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
+  details > summary { cursor: pointer; color: var(--muted); font-size: 0.9rem; }
+  details > summary:hover { color: var(--fg); }
+  .rn-badge { display: inline-flex; align-items: center; font-size: 0.75rem; font-weight: 500; padding: 1px 9px; border-radius: 999px; background: var(--surface-2); color: var(--fg); white-space: nowrap; }
+  .rn-badge-ok { background: var(--ok-soft); color: var(--ok); } .rn-badge-warn { background: var(--warn-soft); color: var(--warn); } .rn-badge-accent { background: var(--accent-soft); color: var(--accent); }
+  .rn-notice { color: var(--muted); padding: 10px 0; }
+  .rn-notice.rn-error, .rn-error { color: var(--danger); }
+  .rn-notice.rn-warn { color: var(--warn); background: var(--warn-soft); padding: 9px 14px; border-radius: var(--radius); }
+  .rn-table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); }
+  table.rn-table { border-collapse: collapse; width: 100%; font-size: 0.9rem; font-variant-numeric: tabular-nums; }
+  .rn-table th, .rn-table td { border-bottom: 1px solid var(--line); padding: 7px 12px; text-align: left; }
+  .rn-table tr:last-child td { border-bottom: 0; }
+  .rn-table th { background: var(--surface-2); font-weight: 600; font-size: 0.84rem; }
+  .rn-dialog { border: 1px solid var(--line); border-radius: 14px; background: var(--surface); color: var(--fg); padding: 22px; max-width: min(520px, calc(100vw - 32px)); box-shadow: var(--shadow); }
+  .rn-dialog::backdrop { background: rgb(10 14 26 / 0.45); }
+  .rn-dialog p { margin-bottom: 18px; }
+  #rn-toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(20px + env(safe-area-inset-bottom, 0px)); z-index: 30; background: var(--fg); color: var(--bg); padding: 9px 18px; border-radius: 999px; font-size: 0.9rem; font-weight: 500; max-width: calc(100vw - 32px); box-shadow: var(--shadow); }
+  #rn-toast[data-kind="error"] { background: var(--danger); color: var(--accent-fg); }
+  @media (prefers-reduced-motion: no-preference) {
+    .rn-btn, #rn-nav a, input, select, textarea { transition: background-color 0.12s, border-color 0.12s, box-shadow 0.12s, color 0.12s; }
+  }
+  @media (max-width: 560px) {
+    h1 { font-size: 1.45rem; }
+    #rn-view { padding-block: 22px 88px; }
+    #rn-header .inner { gap: 6px 12px; padding-block: 9px 6px; }
+    #rn-brand { flex: 1; }
+    #rn-nav { order: 3; flex: 0 0 100%; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-inline: -6px; }
+    #rn-nav::-webkit-scrollbar { display: none; }
+    #rn-nav a { padding: 5px 10px; white-space: nowrap; }
+  }
+  /* ---------- 에디터 화면: 책상 위의 종이 한 장 ---------- */
+  body[data-view="editor"] { background: var(--desk); }
+  body[data-view="editor"] #rn-view { padding-block: 18px 96px; gap: 14px; }
+  body[data-view="editor"] #chat-fab, body[data-view="editor"] #chat-float { display: none !important; }
+  body[data-view="editor"] .rn-ed-head { gap: 8px 12px; padding: 6px 8px 6px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); }
+  body[data-view="editor"] .rn-ed-head > .rn-link { text-decoration: none; color: var(--muted); font-weight: 500; padding: 4px 2px; }
+  body[data-view="editor"] .rn-ed-head > .rn-link:hover { color: var(--accent); }
+  body[data-view="editor"] .rn-ed-titlebox { align-items: center; padding-left: 12px; border-left: 1px solid var(--line); }
+  body[data-view="editor"] .rn-ed-titlebox h1 { font-family: var(--font-body); font-size: 1rem; font-weight: 600; letter-spacing: 0; }
+  body[data-view="editor"] .rn-ed-status { display: inline-flex; align-items: center; gap: 6px; font-size: 0.78rem; padding: 2px 10px 2px 8px; border-radius: 999px; background: var(--surface-2); color: var(--muted); font-weight: 500; }
+  body[data-view="editor"] .rn-ed-status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex: none; }
+  body[data-view="editor"] .rn-ed-status[data-kind="saved"] { background: var(--ok-soft); color: var(--ok); }
+  body[data-view="editor"] .rn-ed-status[data-kind="saved"]::before { background: var(--ok); }
+  body[data-view="editor"] .rn-ed-status[data-kind="offline"], body[data-view="editor"] .rn-ed-status[data-kind="error"], body[data-view="editor"] .rn-ed-status[data-kind="conflict"] { background: var(--warn-soft); color: var(--warn); }
+  body[data-view="editor"] .rn-ed-status[data-kind="offline"]::before, body[data-view="editor"] .rn-ed-status[data-kind="error"]::before, body[data-view="editor"] .rn-ed-status[data-kind="conflict"]::before { background: var(--warn); }
+  body[data-view="editor"] .rn-ed-panelbar { gap: 2px; padding: 3px; background: var(--surface-2); border-radius: 10px; }
+  body[data-view="editor"] .rn-ed-panelbar .rn-btn { border-color: transparent; background: none; color: var(--muted); font-weight: 500; padding: 5px 12px; border-radius: 7px; }
+  body[data-view="editor"] .rn-ed-panelbar .rn-btn:hover { color: var(--fg); background: none; }
+  body[data-view="editor"] .rn-ed-panelbar .rn-btn[aria-expanded="true"] { background: var(--surface); color: var(--accent); box-shadow: 0 1px 2px rgb(18 26 46 / 0.12); }
+  body[data-view="editor"] .rn-ed-toolbar { width: fit-content; max-width: 100%; margin: 0 auto 14px; padding: 4px 8px; gap: 1px; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; box-shadow: var(--shadow); z-index: 8; }
+  body[data-view="editor"] .rn-ed-toolbar .rn-btn { border-radius: 999px; min-width: 34px; height: 32px; padding: 0 10px; color: var(--fg); font-weight: 500; }
+  body[data-view="editor"] .rn-ed-toolbar .rn-btn:hover, body[data-view="editor"] .rn-ed-toolbar .rn-btn[aria-expanded="true"] { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+  body[data-view="editor"] .rn-ed-toolbar .rn-btn[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+  body[data-view="editor"] .rn-ed-toolbar select { border: 0; border-radius: 999px; height: 32px; padding: 0 10px; font-weight: 500; box-shadow: none; }
+  body[data-view="editor"] .rn-ed-toolbar select:hover { background: var(--surface-2); }
+  body[data-view="editor"] .rn-ed-toolbar .sep { height: 16px; margin: 0 6px; }
+  body[data-view="editor"] .rn-menu, body[data-view="editor"] .rn-palette { border-radius: 12px; padding: 6px; box-shadow: var(--shadow); }
+  body[data-view="editor"] .rn-menu button { border-radius: 7px; padding: 7px 12px; }
+  body[data-view="editor"] .rn-paper { border-radius: 3px; box-shadow: 0 1px 1px rgb(18 26 46 / 0.08), 0 12px 40px rgb(18 26 46 / 0.14); }
+  body[data-view="editor"] .rn-paper input.rn-paper-title { box-shadow: none; border-radius: 0; }
+  body[data-view="editor"] .rn-paper input.rn-paper-title:focus { box-shadow: none; }
+  body[data-view="editor"] .rn-ed-side { border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; gap: 14px; box-shadow: var(--shadow); }
+  body[data-view="editor"] .rn-ed-side h3 { font-size: 0.95rem; }
+  body[data-view="editor"] .rn-ed-side legend { color: var(--muted); font-size: 0.78rem; font-weight: 600; letter-spacing: 0.04em; }
+  @media (min-width: 760px) {
+    body[data-view="editor"] .rn-ed-toolbar { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 62px); }
+  }
+  @media (max-width: 759px) {
+    body[data-view="editor"] .rn-ed-toolbar { border-radius: 14px; width: 100%; }
+    body[data-view="editor"] .rn-ed-titlebox { border-left: 0; padding-left: 0; }
+  }
+</style>
+
+<header id="rn-header">
+  <div class="inner">
+    <a id="rn-brand" href="#home" aria-label="Re;Note 처음으로">Re<span class="semi">;</span>Note</a>
+    <nav id="rn-nav" aria-label="주요 메뉴">
+      <a href="#explore" data-view="explore">연구 탐색</a>
+      <a href="#pains" data-view="pains">고충 게시판</a>
+      <a href="#projects" data-view="projects">내 프로젝트</a>
+      <a href="#convert" data-view="convert">한글 파일 열기</a>
+    </nav>
+    <span id="rn-me" aria-live="polite"></span>
+  </div>
+</header>
+<main id="rn-view"><p class="rn-notice" role="status">불러오는 중…</p></main>
+<div id="rn-toast" role="status" aria-live="polite" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="core.js"></script>
+<script src="mod-search.js"></script>
+<script src="mod-home.js"></script>
+<script src="mod-pains.js"></script>
+<script src="mod-research.js"></script>
+<script src="mod-editor.js"></script>
+<script src="mod-data.js"></script>
+<script src="mod-convert.js"></script>
+<script src="mod-chat.js"></script>
+<script>
+  RN.ready.then(async (caps) => {
+    const me = document.getElementById("rn-me");
+    me.textContent = caps.me && caps.me.name ? caps.me.name : caps.uid ? "로그인됨" : "로그인하지 않음";
+    RN.start();
+  });
+</script>

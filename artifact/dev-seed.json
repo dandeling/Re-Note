@@ -1,0 +1,1742 @@
+{
+ "research/seed-r01": {
+  "title": "음향 블랙홀 구조를 이용한 얇은 판의 진동 감쇠 효과 측정",
+  "summary": "두께가 거듭제곱 꼴로 얇아지는 음향 블랙홀 홈을 알루미늄 판에 가공하고, 홈 끝에 점탄성 테이프를 붙였을 때 굽힘파 진동이 얼마나 줄어드는지 가속도 센서로 측정했다. 1~5 kHz 대역에서 평판 대비 평균 9 dB의 감쇠를 확인했다.",
+  "field": "물리",
+  "keywords": [
+   "음향 블랙홀",
+   "진동 감쇠",
+   "굽힘파",
+   "가속도 센서"
+  ],
+  "limitations": "홈 끝 두께를 0.3 mm 이하로 가공하지 못해 저주파(500 Hz 이하)에서는 효과가 거의 없었고, 판 한 장으로만 실험해 재현성을 검증하지 못했다.",
+  "authorId": null,
+  "publishedAt": 1788220800000,
+  "report": null,
+  "isExample": true
+ },
+ "pains/seed-p001": {
+  "title": "음향 블랙홀 홈을 CNC로 깎으면 끝부분이 찢어져요",
+  "body": "두께를 0.2 mm까지 줄이려고 하면 알루미늄 판 끝이 말리거나 찢어집니다. 학교 메이커실 장비로는 한계인 것 같은데 다른 가공 방법이 있을까요?",
+  "stage": "EXPERIMENT",
+  "field": "물리",
+  "tags": [
+   "가공",
+   "알루미늄",
+   "음향 블랙홀"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": "seed-r01",
+  "resolved": true,
+  "resolution": "3D 프린터로 PLA 시편을 먼저 만들어 경향을 확인하고, 금속 판은 끝 두께 0.3 mm에서 타협했습니다.",
+  "createdAt": 1788224400000,
+  "updatedAt": 1788224400000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "pains/seed-p002": {
+  "title": "가속도 센서 무게 때문에 진동 측정값이 달라지는 문제",
+  "body": "얇은 판에 센서를 붙이면 센서 질량 때문에 공진 주파수가 바뀝니다. 붙이는 위치마다 결과가 달라서 어떤 값을 믿어야 할지 모르겠어요.",
+  "stage": "EXPERIMENT",
+  "field": "물리",
+  "tags": [
+   "가속도 센서",
+   "공진",
+   "측정 오차"
+  ],
+  "isAnonymous": true,
+  "authorId": null,
+  "researchId": null,
+  "resolved": false,
+  "resolution": null,
+  "createdAt": 1788228000000,
+  "updatedAt": 1788228000000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "research/seed-r02": {
+  "title": "스마트폰 마이크로 측정한 관악기 정상파와 관 끝 보정",
+  "summary": "길이를 바꿀 수 있는 PVC 관에 스피커로 소리를 넣고 스마트폰 마이크로 공명 진동수를 찾아 음속과 관 끝 보정값을 구했다. 보정값은 관 반지름의 약 0.58배로 이론값 0.61배와 가까웠다.",
+  "field": "물리",
+  "keywords": [
+   "정상파",
+   "공명",
+   "관 끝 보정",
+   "스마트폰 실험"
+  ],
+  "limitations": "교실 소음과 스마트폰 마이크의 주파수 응답 특성을 보정하지 못했고, 온도를 한 번만 측정했다.",
+  "authorId": null,
+  "publishedAt": 1788307200000,
+  "report": null,
+  "isExample": true
+ },
+ "pains/seed-p003": {
+  "title": "교실에서 공명 실험하면 주변 소음이 너무 커요",
+  "body": "쉬는 시간 소음 때문에 공명 봉우리가 묻힙니다. 방음 시설 없이 소음을 줄이는 방법이 궁금합니다.",
+  "stage": "EXPERIMENT",
+  "field": "물리",
+  "tags": [
+   "소음",
+   "공명",
+   "스마트폰 실험"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": "seed-r02",
+  "resolved": true,
+  "resolution": "같은 조건에서 10회 녹음한 뒤 스펙트럼을 평균했더니 봉우리가 뚜렷해졌습니다.",
+  "createdAt": 1788310800000,
+  "updatedAt": 1788310800000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "pains/seed-p004": {
+  "title": "FFT 앱마다 진동수 값이 조금씩 달라서 혼란스러워요",
+  "body": "같은 소리를 녹음했는데 앱에 따라 3~5 Hz씩 차이가 납니다. 분해능이 무엇에 따라 정해지는지 모르겠습니다.",
+  "stage": "ANALYSIS",
+  "field": "물리",
+  "tags": [
+   "FFT",
+   "분해능",
+   "데이터 분석"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": null,
+  "resolved": false,
+  "resolution": null,
+  "createdAt": 1788314400000,
+  "updatedAt": 1788314400000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "research/seed-r03": {
+  "title": "네오디뮴 자석 낙하 실험으로 본 와전류 제동과 관 두께의 관계",
+  "summary": "두께가 다른 구리관과 알루미늄관에 네오디뮴 자석을 떨어뜨려 종단 속도를 측정했다. 관이 두꺼울수록 종단 속도가 줄었지만, 두께가 표피 깊이보다 커지면 변화가 완만해졌다.",
+  "field": "물리",
+  "keywords": [
+   "와전류",
+   "전자기 유도",
+   "자석 낙하",
+   "렌츠 법칙"
+  ],
+  "limitations": "자석이 관 안에서 기울어지며 벽에 닿는 경우를 걸러내지 못했고, 관 종류가 4가지뿐이었다.",
+  "authorId": null,
+  "publishedAt": 1788393600000,
+  "report": null,
+  "isExample": true
+ },
+ "pains/seed-p005": {
+  "title": "자석이 관 벽에 부딪혀서 낙하 시간이 들쭉날쭉합니다",
+  "body": "자석이 떨어지면서 회전하거나 벽에 붙어 버립니다. 같은 조건에서도 시간이 20%씩 차이 나요.",
+  "stage": "EXPERIMENT",
+  "field": "물리",
+  "tags": [
+   "와전류",
+   "낙하 실험",
+   "재현성"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": "seed-r03",
+  "resolved": true,
+  "resolution": "자석을 3D 프린팅한 원통 가이드에 끼워 떨어뜨리니 편차가 5% 이내로 줄었습니다.",
+  "createdAt": 1788397200000,
+  "updatedAt": 1788397200000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "pains/seed-p006": {
+  "title": "초고속 촬영 없이 종단 속도를 재는 방법이 있을까요",
+  "body": "스마트폰 240fps로는 프레임이 부족합니다. 코일을 감아 유도 전압으로 통과 시각을 재는 방법을 생각 중인데 해 보신 분 있나요?",
+  "stage": "DESIGN",
+  "field": "물리",
+  "tags": [
+   "속도 측정",
+   "전자기 유도",
+   "아두이노"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": "seed-r03",
+  "resolved": false,
+  "resolution": null,
+  "createdAt": 1788400800000,
+  "updatedAt": 1788400800000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "research/seed-r04": {
+  "title": "저가형 분광기를 이용한 LED 파장 측정과 플랑크 상수 추정",
+  "summary": "회절격자 필름과 웹캠으로 만든 분광기로 다섯 색 LED의 중심 파장을 재고, 문턱 전압과의 관계에서 플랑크 상수를 구했다. 결과는 6.1×10⁻³⁴ J·s로 공인값과 약 8% 차이였다.",
+  "field": "물리",
+  "keywords": [
+   "플랑크 상수",
+   "LED",
+   "분광기",
+   "문턱 전압"
+  ],
+  "limitations": "문턱 전압을 정하는 기준이 주관적이었고, 백색·청색 LED는 형광체 때문에 스펙트럼이 넓어 오차가 컸다.",
+  "authorId": null,
+  "publishedAt": 1788480000000,
+  "report": null,
+  "isExample": true
+ },
+ "pains/seed-p007": {
+  "title": "LED 문턱 전압을 어디로 잡아야 할지 기준이 없어요",
+  "body": "전류-전압 그래프가 완만하게 올라가서 '켜지는 전압'이 사람마다 다릅니다. 보고서에 어떤 기준을 쓰는 게 타당할까요?",
+  "stage": "ANALYSIS",
+  "field": "물리",
+  "tags": [
+   "LED",
+   "문턱 전압",
+   "그래프 해석"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": "seed-r04",
+  "resolved": true,
+  "resolution": "직선 구간을 외삽해 전류 0과 만나는 점을 문턱 전압으로 정하고 그 기준을 보고서에 명시했습니다.",
+  "createdAt": 1788483600000,
+  "updatedAt": 1788483600000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "pains/seed-p008": {
+  "title": "웹캠 분광기 눈금 보정을 무엇으로 해야 하나요",
+  "body": "기준 파장이 필요한데 레이저 포인터 하나밖에 없습니다. 형광등 수은선을 써도 되는지 궁금합니다.",
+  "stage": "DESIGN",
+  "field": "물리",
+  "tags": [
+   "분광기",
+   "보정",
+   "파장"
+  ],
+  "isAnonymous": true,
+  "authorId": null,
+  "researchId": null,
+  "resolved": false,
+  "resolution": null,
+  "createdAt": 1788487200000,
+  "updatedAt": 1788487200000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "research/seed-r05": {
+  "title": "적양배추 안토시아닌 지시약의 pH별 색 변화 정량화",
+  "summary": "적양배추에서 추출한 안토시아닌 용액을 pH 2~12 완충 용액에 넣고 스마트폰 사진의 RGB 값을 분석해 pH를 추정하는 검정 곡선을 만들었다. pH 3~10 구간에서 ±0.5 이내로 추정할 수 있었다.",
+  "field": "화학",
+  "keywords": [
+   "안토시아닌",
+   "천연 지시약",
+   "pH",
+   "색 분석"
+  ],
+  "limitations": "조명 조건에 따라 RGB 값이 크게 달라졌고, 추출액이 하루만 지나도 색이 변해 장기 보관이 어려웠다.",
+  "authorId": null,
+  "publishedAt": 1788566400000,
+  "report": null,
+  "isExample": true
+ },
+ "pains/seed-p009": {
+  "title": "사진으로 색을 분석하는데 조명 때문에 값이 매번 달라요",
+  "body": "같은 용액인데 오전과 오후에 찍은 사진의 RGB 값이 다릅니다. 화이트밸런스를 고정해도 차이가 남아요.",
+  "stage": "EXPERIMENT",
+  "field": "화학",
+  "tags": [
+   "색 분석",
+   "조명",
+   "스마트폰 실험"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": "seed-r05",
+  "resolved": true,
+  "resolution": "상자 안에 LED 조명을 고정한 촬영 부스를 만들고 회색 카드를 같이 찍어 보정했습니다.",
+  "createdAt": 1788570000000,
+  "updatedAt": 1788570000000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "pains/seed-p010": {
+  "title": "천연 지시약 추출액이 금방 변질됩니다",
+  "body": "적양배추 추출액을 냉장 보관해도 이틀이면 색이 탁해집니다. 실험 기간이 2주인데 매번 새로 만들어야 할까요?",
+  "stage": "EXPERIMENT",
+  "field": "화학",
+  "tags": [
+   "안토시아닌",
+   "보관",
+   "천연 지시약"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": "seed-r05",
+  "resolved": false,
+  "resolution": null,
+  "createdAt": 1788573600000,
+  "updatedAt": 1788573600000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "research/seed-r06": {
+  "title": "과산화수소 분해 반응에서 감자 카탈레이스의 온도·pH 의존성",
+  "summary": "감자 추출액의 카탈레이스로 과산화수소를 분해하며 발생하는 산소 부피를 기체 압력 센서로 측정했다. 반응 속도는 35 ℃, pH 7 부근에서 최대였고 60 ℃ 이상에서는 급격히 감소했다.",
+  "field": "화학",
+  "keywords": [
+   "카탈레이스",
+   "효소 반응 속도",
+   "과산화수소",
+   "기체 발생량"
+  ],
+  "limitations": "감자마다 효소 농도가 달라 날짜별 결과를 직접 비교하기 어려웠고, 거품 때문에 부피 측정에 오차가 있었다.",
+  "authorId": null,
+  "publishedAt": 1788652800000,
+  "report": null,
+  "isExample": true
+ },
+ "pains/seed-p011": {
+  "title": "효소 추출액 농도를 매번 똑같이 맞추기 어렵습니다",
+  "body": "감자를 같은 무게로 갈아도 반응 속도가 날마다 달라요. 효소 농도를 표준화하는 방법이 있을까요?",
+  "stage": "DESIGN",
+  "field": "화학",
+  "tags": [
+   "효소",
+   "표준화",
+   "카탈레이스"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": "seed-r06",
+  "resolved": true,
+  "resolution": "한 번에 많이 추출해 소분 냉동하고, 매 실험마다 기준 조건을 함께 측정해 상대값으로 비교했습니다.",
+  "createdAt": 1788656400000,
+  "updatedAt": 1788656400000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "pains/seed-p012": {
+  "title": "산소 거품이 넘쳐서 기체 부피를 잴 수 없어요",
+  "body": "과산화수소 농도를 높이면 거품이 시험관 밖으로 넘칩니다. 눈금실린더 수상 치환도 거품 때문에 눈금 읽기가 힘들어요.",
+  "stage": "EXPERIMENT",
+  "field": "화학",
+  "tags": [
+   "기체 발생량",
+   "과산화수소",
+   "측정"
+  ],
+  "isAnonymous": true,
+  "authorId": null,
+  "researchId": null,
+  "resolved": false,
+  "resolution": null,
+  "createdAt": 1788660000000,
+  "updatedAt": 1788660000000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "research/seed-r07": {
+  "title": "폐식용유로 만든 바이오디젤의 전환율과 촉매량의 관계",
+  "summary": "폐식용유와 메탄올을 수산화칼륨 촉매로 반응시켜 바이오디젤을 만들고, 촉매량에 따른 전환율을 점도와 밀도로 추정했다. 촉매 1.0 wt%에서 전환율이 가장 높았고 그 이상에서는 비누화가 늘었다.",
+  "field": "화학",
+  "keywords": [
+   "바이오디젤",
+   "에스터 교환 반응",
+   "폐식용유",
+   "촉매"
+  ],
+  "limitations": "전환율을 기체 크로마토그래피가 아닌 점도로 간접 추정했고, 폐식용유의 산가를 측정하지 못했다.",
+  "authorId": null,
+  "publishedAt": 1788739200000,
+  "report": null,
+  "isExample": true
+ },
+ "pains/seed-p013": {
+  "title": "바이오디젤 층과 글리세롤 층이 분리되지 않고 유화돼요",
+  "body": "반응 후 하루를 둬도 뿌옇게 섞여 있습니다. 비누가 생긴 것 같은데 어떻게 줄일 수 있을까요?",
+  "stage": "EXPERIMENT",
+  "field": "화학",
+  "tags": [
+   "바이오디젤",
+   "비누화",
+   "분리"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": "seed-r07",
+  "resolved": true,
+  "resolution": "폐식용유를 미리 가열해 수분을 날리고 촉매량을 줄였더니 층이 깨끗하게 분리됐습니다.",
+  "createdAt": 1788742800000,
+  "updatedAt": 1788742800000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "pains/seed-p014": {
+  "title": "학교에서 메탄올 사용 허가를 받기 어렵습니다",
+  "body": "유해 물질이라 안전 계획서를 내야 한다고 합니다. 에탄올로 바꾸면 결과가 많이 달라지나요?",
+  "stage": "TOPIC",
+  "field": "화학",
+  "tags": [
+   "안전",
+   "시약",
+   "실험 계획"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": null,
+  "resolved": false,
+  "resolution": null,
+  "createdAt": 1788746400000,
+  "updatedAt": 1788746400000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "research/seed-r08": {
+  "title": "달걀 껍데기를 이용한 중금속 이온 흡착 실험",
+  "summary": "분쇄한 달걀 껍데기를 구리(II) 이온 용액에 넣고 시간에 따른 농도 변화를 비색법으로 측정했다. 입자가 작을수록 흡착량이 컸고, 60분 뒤 구리 이온의 72%가 제거되었다.",
+  "field": "화학",
+  "keywords": [
+   "흡착",
+   "중금속",
+   "달걀 껍데기",
+   "탄산칼슘"
+  ],
+  "limitations": "흡착과 침전(수산화구리 생성)을 구분하지 못했고, 구리 이외의 금속은 시험하지 않았다.",
+  "authorId": null,
+  "publishedAt": 1788825600000,
+  "report": null,
+  "isExample": true
+ },
+ "pains/seed-p015": {
+  "title": "흡착인지 침전인지 구분할 방법을 모르겠어요",
+  "body": "달걀 껍데기를 넣으면 pH가 올라가서 구리 이온이 그냥 침전되는 것 같습니다. 순수한 흡착 효과만 보려면 어떻게 설계해야 하나요?",
+  "stage": "DESIGN",
+  "field": "화학",
+  "tags": [
+   "흡착",
+   "대조군",
+   "중금속"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": "seed-r08",
+  "resolved": false,
+  "resolution": null,
+  "createdAt": 1788829200000,
+  "updatedAt": 1788829200000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "pains/seed-p016": {
+  "title": "비색법 검정 곡선이 고농도에서 휘어집니다",
+  "body": "구리 이온 농도가 높아지면 흡광도가 직선에서 벗어납니다. 어디까지를 직선 구간으로 봐야 할까요?",
+  "stage": "ANALYSIS",
+  "field": "화학",
+  "tags": [
+   "비색법",
+   "검정 곡선",
+   "흡광도"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": "seed-r08",
+  "resolved": true,
+  "resolution": "고농도 시료는 희석해서 직선 구간 안에서 측정한 뒤 희석 배수를 곱했습니다.",
+  "createdAt": 1788832800000,
+  "updatedAt": 1788832800000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "research/seed-r09": {
+  "title": "LED 광질에 따른 상추 생장과 엽록소 함량 비교",
+  "summary": "적색·청색·혼합·백색 LED 아래에서 상추를 4주간 수경 재배하며 생체량, 잎 수, 엽록소 함량을 비교했다. 적청 혼합광(3:1)에서 생체량이 가장 컸고 청색광 단독은 엽록소 함량이 가장 높았다.",
+  "field": "생명과학",
+  "keywords": [
+   "식물 생장",
+   "LED 광질",
+   "엽록소",
+   "수경 재배"
+  ],
+  "limitations": "처리구마다 광량(PPFD)을 정확히 맞추지 못했고, 처리구당 개체 수가 6포기로 적었다.",
+  "authorId": null,
+  "publishedAt": 1788912000000,
+  "report": null,
+  "isExample": true
+ },
+ "pains/seed-p017": {
+  "title": "LED 색마다 밝기가 달라서 광량을 똑같이 맞출 수 없어요",
+  "body": "조도계(lux)로는 적색과 청색을 공평하게 비교할 수 없다고 들었습니다. PPFD 측정기가 없을 때 대안이 있을까요?",
+  "stage": "DESIGN",
+  "field": "생명과학",
+  "tags": [
+   "광량",
+   "LED",
+   "변인 통제"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": "seed-r09",
+  "resolved": true,
+  "resolution": "스마트폰 PPFD 앱과 확산판을 써서 대략 맞추고, 한계로 명시했습니다.",
+  "createdAt": 1788915600000,
+  "updatedAt": 1788915600000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "pains/seed-p018": {
+  "title": "수경 재배 중 녹조가 생겨 뿌리가 썩습니다",
+  "body": "양액 통에 녹조가 끼고 2주 차부터 뿌리가 갈변합니다. 중간에 양액을 갈면 실험 조건이 바뀌는 건 아닌지 걱정돼요.",
+  "stage": "EXPERIMENT",
+  "field": "생명과학",
+  "tags": [
+   "수경 재배",
+   "녹조",
+   "식물 생장"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": "seed-r09",
+  "resolved": false,
+  "resolution": null,
+  "createdAt": 1788919200000,
+  "updatedAt": 1788919200000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "research/seed-r10": {
+  "title": "손 씻기 방법에 따른 세균 집락 수 변화",
+  "summary": "물로만 씻기, 비누 15초, 비누 30초, 손 소독제 사용 후 손가락을 한천 배지에 찍어 48시간 배양한 집락 수를 비교했다. 비누 30초와 손 소독제에서 집락 수가 씻기 전의 10% 이하로 줄었다.",
+  "field": "생명과학",
+  "keywords": [
+   "세균 배양",
+   "손 씻기",
+   "한천 배지",
+   "집락 수"
+  ],
+  "limitations": "참가자가 8명으로 적었고, 집락이 겹쳐 자란 배지는 정확히 세지 못했다. 세균 종을 동정하지 않았다.",
+  "authorId": null,
+  "publishedAt": 1788998400000,
+  "report": null,
+  "isExample": true
+ },
+ "pains/seed-p019": {
+  "title": "배지에 곰팡이가 먼저 자라서 집락을 셀 수 없어요",
+  "body": "배양 이틀째에 곰팡이가 배지를 덮어 버립니다. 무균 작업대가 없는 교실에서 오염을 줄이는 요령이 있을까요?",
+  "stage": "EXPERIMENT",
+  "field": "생명과학",
+  "tags": [
+   "세균 배양",
+   "오염",
+   "한천 배지"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": "seed-r10",
+  "resolved": true,
+  "resolution": "알코올램프 주변에서 작업하고 뚜껑 여는 시간을 최소화했더니 오염이 크게 줄었습니다.",
+  "createdAt": 1789002000000,
+  "updatedAt": 1789002000000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "pains/seed-p020": {
+  "title": "사람 대상 실험이라 동의서가 필요한지 모르겠어요",
+  "body": "친구들 손을 배지에 찍는 것뿐인데도 연구 윤리 심의가 필요한가요? 학교 대회 규정을 어디서 확인해야 할지 모르겠습니다.",
+  "stage": "TOPIC",
+  "field": "생명과학",
+  "tags": [
+   "연구 윤리",
+   "동의서",
+   "실험 계획"
+  ],
+  "isAnonymous": true,
+  "authorId": null,
+  "researchId": null,
+  "resolved": false,
+  "resolution": null,
+  "createdAt": 1789005600000,
+  "updatedAt": 1789005600000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "research/seed-r11": {
+  "title": "초파리 초기 발생 속도에 미치는 카페인의 영향",
+  "summary": "카페인 농도가 다른 배지에서 초파리를 키우며 번데기가 되기까지 걸린 시간과 우화율을 기록했다. 0.5 mg/mL 이상에서 발생이 평균 1.4일 늦어지고 우화율이 낮아졌다.",
+  "field": "생명과학",
+  "keywords": [
+   "초파리",
+   "카페인",
+   "발생 속도",
+   "행동 실험"
+  ],
+  "limitations": "배양기 온도가 ±2 ℃ 범위에서 흔들렸고, 암수 비율과 세대 효과를 통제하지 못했다.",
+  "authorId": null,
+  "publishedAt": 1789084800000,
+  "report": null,
+  "isExample": true
+ },
+ "pains/seed-p021": {
+  "title": "초파리가 자꾸 탈출하고 배지에 진드기가 생겨요",
+  "body": "솜마개 틈으로 탈출하고, 3주 차에는 진드기가 번졌습니다. 개체 수 세는 것도 마취 없이는 불가능하네요.",
+  "stage": "EXPERIMENT",
+  "field": "생명과학",
+  "tags": [
+   "초파리",
+   "사육",
+   "오염"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": "seed-r11",
+  "resolved": false,
+  "resolution": null,
+  "createdAt": 1789088400000,
+  "updatedAt": 1789088400000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "pains/seed-p022": {
+  "title": "발생 속도 차이가 유의미한지 통계 검정을 못 하겠어요",
+  "body": "처리구마다 병이 3개씩인데 t-검정을 써도 되나요? 표본이 너무 적은 것 같습니다.",
+  "stage": "ANALYSIS",
+  "field": "생명과학",
+  "tags": [
+   "통계",
+   "t-검정",
+   "표본 크기"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": "seed-r11",
+  "resolved": true,
+  "resolution": "병 단위가 아니라 개체 단위 기록으로 바꾸고, 비모수 검정(Mann-Whitney)을 사용했습니다.",
+  "createdAt": 1789092000000,
+  "updatedAt": 1789092000000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "research/seed-r12": {
+  "title": "김치 발효 과정의 젖산균 수와 pH 변화 추적",
+  "summary": "4 ℃와 15 ℃에서 김치를 3주간 발효시키며 이틀 간격으로 pH, 적정 산도, 젖산균 수를 측정했다. 15 ℃에서는 5일 만에 pH 4.2에 도달했고 젖산균 수는 9일째 최대였다.",
+  "field": "식품",
+  "keywords": [
+   "발효",
+   "젖산균",
+   "김치",
+   "pH 변화"
+  ],
+  "limitations": "젖산균 선택 배지를 쓰지 못해 총균수로 대신했고, 김치 한 포기 안에서도 부위별 편차가 컸다.",
+  "authorId": null,
+  "publishedAt": 1789171200000,
+  "report": null,
+  "isExample": true
+ },
+ "pains/seed-p023": {
+  "title": "김치 시료가 부위마다 pH가 달라요",
+  "body": "줄기와 잎, 국물의 pH가 0.3 이상 차이 납니다. 시료를 어떻게 채취해야 대표성이 있을까요?",
+  "stage": "DESIGN",
+  "field": "식품",
+  "tags": [
+   "시료 채취",
+   "발효",
+   "pH"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": "seed-r12",
+  "resolved": true,
+  "resolution": "매번 같은 부위를 일정량 갈아 균질화한 뒤 측정하는 것으로 통일했습니다.",
+  "createdAt": 1789174800000,
+  "updatedAt": 1789174800000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "pains/seed-p024": {
+  "title": "희석 평판법에서 집락이 너무 많거나 너무 적게 나옵니다",
+  "body": "희석 배수를 어떻게 잡아야 30~300개 범위에 들어오는지 감이 없습니다. 발효 단계마다 균 수가 크게 달라서요.",
+  "stage": "EXPERIMENT",
+  "field": "식품",
+  "tags": [
+   "젖산균",
+   "희석 평판법",
+   "집락 수"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": "seed-r12",
+  "resolved": false,
+  "resolution": null,
+  "createdAt": 1789178400000,
+  "updatedAt": 1789178400000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "research/seed-r13": {
+  "title": "하천 상·중·하류의 수질과 저서성 대형무척추동물 군집 비교",
+  "summary": "도심 하천 세 지점에서 용존 산소, BOD, 전기 전도도를 측정하고 저서성 대형무척추동물을 채집해 생물학적 수질 등급을 매겼다. 하류로 갈수록 전도도가 높아지고 깔따구류 비율이 늘었다.",
+  "field": "환경",
+  "keywords": [
+   "수질",
+   "생물 지표",
+   "하천 생태",
+   "용존 산소"
+  ],
+  "limitations": "조사가 가을 두 차례뿐이라 계절 변화를 보지 못했고, 동정은 과(科) 수준까지만 했다.",
+  "authorId": null,
+  "publishedAt": 1789257600000,
+  "report": null,
+  "isExample": true
+ },
+ "pains/seed-p025": {
+  "title": "비 온 뒤에는 수질 측정값이 완전히 달라져요",
+  "body": "조사 전날 비가 오면 탁도와 전도도가 평소와 딴판입니다. 조사 날짜를 어떻게 정해야 비교가 되나요?",
+  "stage": "DESIGN",
+  "field": "환경",
+  "tags": [
+   "수질",
+   "현장 조사",
+   "변인 통제"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": "seed-r13",
+  "resolved": true,
+  "resolution": "강우 후 3일 이상 지난 날만 조사하는 기준을 세웠습니다.",
+  "createdAt": 1789261200000,
+  "updatedAt": 1789261200000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "pains/seed-p026": {
+  "title": "채집한 수서 곤충 동정이 너무 어렵습니다",
+  "body": "도감을 봐도 하루살이 유충 종류를 구분하지 못하겠어요. 어느 수준까지 분류해야 보고서에서 인정받을 수 있을까요?",
+  "stage": "ANALYSIS",
+  "field": "환경",
+  "tags": [
+   "생물 지표",
+   "동정",
+   "하천 생태"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": "seed-r13",
+  "resolved": false,
+  "resolution": null,
+  "createdAt": 1789264800000,
+  "updatedAt": 1789264800000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "research/seed-r14": {
+  "title": "교실 미세먼지 농도와 환기 방식의 관계",
+  "summary": "아두이노와 광산란식 먼지 센서로 교실 PM2.5 농도를 2주간 1분 간격으로 기록하고, 창문 환기·공기청정기·무환기 조건을 비교했다. 쉬는 시간 맞통풍 환기가 이산화탄소를 가장 빨리 낮췄지만 외부 농도가 높은 날에는 PM2.5가 오히려 늘었다.",
+  "field": "환경",
+  "keywords": [
+   "미세먼지",
+   "환기",
+   "실내 공기질",
+   "아두이노 센서"
+  ],
+  "limitations": "저가 센서를 기준 장비로 보정하지 못했고, 재실 인원과 활동량을 기록하지 않았다.",
+  "authorId": null,
+  "publishedAt": 1789344000000,
+  "report": null,
+  "isExample": true
+ },
+ "pains/seed-p027": {
+  "title": "저가형 미세먼지 센서 값이 공식 측정소와 많이 달라요",
+  "body": "센서 두 개를 나란히 둬도 값이 20%씩 다릅니다. 보정 없이 써도 되는지, 보정은 어떻게 하는지 궁금합니다.",
+  "stage": "EXPERIMENT",
+  "field": "환경",
+  "tags": [
+   "미세먼지",
+   "센서 보정",
+   "아두이노"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": "seed-r14",
+  "resolved": true,
+  "resolution": "센서들을 같은 장소에서 하루 동안 동시 측정해 상대 보정식을 만들었습니다.",
+  "createdAt": 1789347600000,
+  "updatedAt": 1789347600000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "pains/seed-p028": {
+  "title": "2주치 1분 간격 데이터가 너무 많아서 엑셀이 멈춥니다",
+  "body": "행이 2만 개가 넘으니 그래프 그릴 때마다 멈춰요. 데이터를 어떻게 줄이거나 처리해야 할까요?",
+  "stage": "ANALYSIS",
+  "field": "환경",
+  "tags": [
+   "데이터 처리",
+   "시계열",
+   "그래프"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": null,
+  "resolved": false,
+  "resolution": null,
+  "createdAt": 1789351200000,
+  "updatedAt": 1789351200000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "research/seed-r15": {
+  "title": "밀웜의 스티로폼 분해 능력과 먹이 조건",
+  "summary": "밀웜에게 스티로폼만, 밀기울만, 둘을 함께 준 조건에서 4주간 스티로폼 질량 감소와 생존율을 비교했다. 밀기울을 함께 준 조건에서 스티로폼 소비량이 1.8배 많았고 생존율도 높았다.",
+  "field": "환경",
+  "keywords": [
+   "밀웜",
+   "플라스틱 분해",
+   "스티로폼",
+   "생분해"
+  ],
+  "limitations": "배설물 속 폴리스타이렌이 실제로 분해되었는지 화학적으로 확인하지 못했다.",
+  "authorId": null,
+  "publishedAt": 1789430400000,
+  "report": null,
+  "isExample": true
+ },
+ "pains/seed-p029": {
+  "title": "스티로폼 질량 감소가 너무 작아서 저울로 안 재져요",
+  "body": "일주일에 0.02 g 정도 줄어드는데 학교 저울은 0.01 g 단위입니다. 오차가 변화량만큼 커요.",
+  "stage": "EXPERIMENT",
+  "field": "환경",
+  "tags": [
+   "질량 측정",
+   "플라스틱 분해",
+   "측정 오차"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": "seed-r15",
+  "resolved": true,
+  "resolution": "개체 수와 기간을 늘려 변화량 자체를 키웠습니다.",
+  "createdAt": 1789434000000,
+  "updatedAt": 1789434000000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "pains/seed-p030": {
+  "title": "먹었다는 것과 분해했다는 것을 어떻게 구분하나요",
+  "body": "밀웜이 스티로폼을 갉아 먹긴 하는데 그대로 배설했을 수도 있잖아요. 고등학생 수준에서 분해를 확인할 방법이 있을까요?",
+  "stage": "TOPIC",
+  "field": "환경",
+  "tags": [
+   "밀웜",
+   "생분해",
+   "연구 설계"
+  ],
+  "isAnonymous": true,
+  "authorId": null,
+  "researchId": null,
+  "resolved": false,
+  "resolution": null,
+  "createdAt": 1789437600000,
+  "updatedAt": 1789437600000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "research/seed-r16": {
+  "title": "태양광 패널 표면 온도와 발전 효율: 물 분무 냉각의 효과",
+  "summary": "소형 태양광 패널에 물을 주기적으로 분무해 표면 온도를 낮추었을 때 출력 변화를 측정했다. 한여름 정오 기준 표면 온도가 18 ℃ 낮아지며 출력이 약 7% 증가했다.",
+  "field": "공학",
+  "keywords": [
+   "태양광 패널",
+   "발전 효율",
+   "냉각",
+   "표면 온도"
+  ],
+  "limitations": "일사량이 구름에 따라 계속 변해 조건을 고정하기 어려웠고, 분무에 쓰인 에너지와 물 소비를 계산에 넣지 않았다.",
+  "authorId": null,
+  "publishedAt": 1789516800000,
+  "report": null,
+  "isExample": true
+ },
+ "pains/seed-p031": {
+  "title": "구름 때문에 일사량이 변해서 비교 실험이 안 됩니다",
+  "body": "냉각 전후를 비교하려는데 그 사이에 구름이 지나가면 출력이 바뀝니다. 야외 실험에서 일사량을 통제할 방법이 있나요?",
+  "stage": "EXPERIMENT",
+  "field": "공학",
+  "tags": [
+   "일사량",
+   "태양광 패널",
+   "변인 통제"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": "seed-r16",
+  "resolved": true,
+  "resolution": "똑같은 패널 두 장을 나란히 놓고 동시에 측정해 한 장을 대조군으로 썼습니다.",
+  "createdAt": 1789520400000,
+  "updatedAt": 1789520400000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "pains/seed-p032": {
+  "title": "최대 출력을 재려면 부하 저항을 어떻게 골라야 하나요",
+  "body": "저항값에 따라 전력이 달라지던데 매번 가변저항을 돌려 최대점을 찾아야 하나요?",
+  "stage": "DESIGN",
+  "field": "공학",
+  "tags": [
+   "발전 효율",
+   "부하 저항",
+   "전력 측정"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": "seed-r16",
+  "resolved": false,
+  "resolution": null,
+  "createdAt": 1789524000000,
+  "updatedAt": 1789524000000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "research/seed-r17": {
+  "title": "종이 다리 구조에 따른 하중 지지 능력 비교",
+  "summary": "같은 양의 종이로 평판형, 아치형, 워런 트러스형, 프랫 트러스형 다리를 만들어 파괴 하중을 비교했다. 워런 트러스가 자체 무게 대비 가장 큰 하중을 견뎠고, 대부분 접합부에서 먼저 파괴되었다.",
+  "field": "공학",
+  "keywords": [
+   "트러스",
+   "구조 역학",
+   "하중 시험",
+   "종이 다리"
+  ],
+  "limitations": "접착 품질이 제작자 숙련도에 따라 달랐고, 구조마다 3개씩만 시험했다.",
+  "authorId": null,
+  "publishedAt": 1789603200000,
+  "report": null,
+  "isExample": true
+ },
+ "pains/seed-p033": {
+  "title": "다리가 부재가 아니라 풀칠한 접합부에서 먼저 떨어져요",
+  "body": "구조 차이를 보고 싶은데 접착 불량이 결과를 좌우합니다. 접합 조건을 균일하게 만드는 방법이 있을까요?",
+  "stage": "EXPERIMENT",
+  "field": "공학",
+  "tags": [
+   "접합",
+   "트러스",
+   "재현성"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": "seed-r17",
+  "resolved": false,
+  "resolution": null,
+  "createdAt": 1789606800000,
+  "updatedAt": 1789606800000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "pains/seed-p034": {
+  "title": "하중을 조금씩 올리는 장치를 만들기가 어렵습니다",
+  "body": "추를 손으로 올리면 충격이 가해져서 일찍 부서집니다. 모래나 물을 붓는 방식은 괜찮을까요?",
+  "stage": "DESIGN",
+  "field": "공학",
+  "tags": [
+   "하중 시험",
+   "실험 장치",
+   "구조 역학"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": "seed-r17",
+  "resolved": true,
+  "resolution": "양동이에 물을 일정한 속도로 흘려 넣는 방식으로 바꿔 충격 없이 하중을 늘렸습니다.",
+  "createdAt": 1789610400000,
+  "updatedAt": 1789610400000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "research/seed-r18": {
+  "title": "PID 제어를 적용한 라인트레이서의 주행 안정성 개선",
+  "summary": "적외선 센서 5개를 쓴 라인트레이서에 비례 제어, PD 제어, PID 제어를 각각 적용해 곡선 구간 이탈 횟수와 주행 시간을 비교했다. PD 제어가 진동을 가장 잘 줄였고 적분 항은 이 트랙에서 효과가 작았다.",
+  "field": "공학",
+  "keywords": [
+   "PID 제어",
+   "라인트레이서",
+   "아두이노",
+   "제어 이득 조정"
+  ],
+  "limitations": "이득 값을 시행착오로 정했고, 배터리 전압 저하에 따른 모터 출력 변화를 보정하지 않았다.",
+  "authorId": null,
+  "publishedAt": 1789689600000,
+  "report": null,
+  "isExample": true
+ },
+ "pains/seed-p035": {
+  "title": "PID 이득 값을 어떻게 잡아야 할지 감이 안 와요",
+  "body": "값을 조금만 바꿔도 로봇이 좌우로 심하게 흔들리거나 선을 놓칩니다. 체계적으로 조정하는 순서가 있을까요?",
+  "stage": "EXPERIMENT",
+  "field": "공학",
+  "tags": [
+   "PID 제어",
+   "튜닝",
+   "라인트레이서"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": "seed-r18",
+  "resolved": true,
+  "resolution": "P만으로 진동 직전까지 올린 뒤 D를 늘려 진동을 잡고, I는 마지막에 아주 작게 넣었습니다.",
+  "createdAt": 1789693200000,
+  "updatedAt": 1789693200000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "pains/seed-p036": {
+  "title": "배터리가 닳으면 같은 코드인데 주행이 달라집니다",
+  "body": "오전에 맞춘 값이 오후에는 안 맞아요. 전압이 떨어져 모터 속도가 달라지는 것 같습니다.",
+  "stage": "EXPERIMENT",
+  "field": "공학",
+  "tags": [
+   "배터리",
+   "모터",
+   "아두이노"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": null,
+  "resolved": false,
+  "resolution": null,
+  "createdAt": 1789696800000,
+  "updatedAt": 1789696800000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "research/seed-r19": {
+  "title": "합성곱 신경망을 이용한 재활용 쓰레기 이미지 분류",
+  "summary": "직접 촬영한 캔·페트병·종이·비닐 사진 2,400장으로 사전 학습된 MobileNet을 미세 조정해 분류 모델을 만들었다. 검증 정확도는 93%였지만 찌그러진 캔과 투명 비닐에서 오분류가 많았다.",
+  "field": "정보·컴퓨터",
+  "keywords": [
+   "이미지 분류",
+   "합성곱 신경망",
+   "전이 학습",
+   "재활용"
+  ],
+  "limitations": "학교 안에서만 촬영해 배경이 비슷했고, 다른 장소에서 찍은 사진으로는 정확도가 78%로 떨어졌다.",
+  "authorId": null,
+  "publishedAt": 1789776000000,
+  "report": null,
+  "isExample": true
+ },
+ "pains/seed-p037": {
+  "title": "학습 정확도는 높은데 새 사진에서는 정확도가 뚝 떨어져요",
+  "body": "검증 정확도는 93%인데 집에서 찍은 사진은 엉망입니다. 과적합인지 데이터 편향인지 어떻게 구분하나요?",
+  "stage": "ANALYSIS",
+  "field": "정보·컴퓨터",
+  "tags": [
+   "과적합",
+   "데이터 편향",
+   "이미지 분류"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": "seed-r19",
+  "resolved": true,
+  "resolution": "배경과 조명이 다른 장소에서 추가 촬영하고 데이터 증강을 적용해 일반화 성능을 높였습니다.",
+  "createdAt": 1789779600000,
+  "updatedAt": 1789779600000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "pains/seed-p038": {
+  "title": "사진 2천 장 라벨링이 너무 오래 걸립니다",
+  "body": "팀원 셋이서 일주일째 라벨만 붙이고 있어요. 품질을 유지하면서 빨리 하는 방법이 있을까요?",
+  "stage": "EXPERIMENT",
+  "field": "정보·컴퓨터",
+  "tags": [
+   "라벨링",
+   "데이터 수집",
+   "전이 학습"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": "seed-r19",
+  "resolved": false,
+  "resolution": null,
+  "createdAt": 1789783200000,
+  "updatedAt": 1789783200000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "research/seed-r20": {
+  "title": "공공 자전거 대여 데이터로 본 날씨와 이용량의 관계",
+  "summary": "1년 치 공공 자전거 대여 기록과 기상 자료를 결합해 기온·강수·미세먼지와 시간대별 이용량의 관계를 분석했다. 기온 20 ℃ 전후에서 이용량이 최대였고, 강수 여부가 가장 큰 설명 변수였다.",
+  "field": "정보·컴퓨터",
+  "keywords": [
+   "공공 데이터",
+   "회귀 분석",
+   "자전거 대여",
+   "데이터 시각화"
+  ],
+  "limitations": "대여소별 거치대 수와 주변 인구를 고려하지 않았고, 상관관계를 인과로 해석할 수 없다.",
+  "authorId": null,
+  "publishedAt": 1789862400000,
+  "report": null,
+  "isExample": true
+ },
+ "pains/seed-p039": {
+  "title": "CSV 파일을 열면 한글이 전부 깨져 있어요",
+  "body": "공공데이터포털에서 받은 파일이 엑셀에서는 괜찮은데 파이썬으로 읽으면 깨집니다. 인코딩을 어떻게 지정해야 하나요?",
+  "stage": "ANALYSIS",
+  "field": "정보·컴퓨터",
+  "tags": [
+   "CSV",
+   "인코딩",
+   "공공 데이터"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": "seed-r20",
+  "resolved": true,
+  "resolution": "encoding='cp949'로 읽으니 해결됐습니다. 저장할 때는 utf-8-sig로 바꿨어요.",
+  "createdAt": 1789866000000,
+  "updatedAt": 1789866000000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "pains/seed-p040": {
+  "title": "상관관계가 높으면 원인이라고 써도 되나요",
+  "body": "기온과 이용량의 상관계수가 0.7인데 보고서에 '기온이 이용량을 늘린다'고 써도 되는지 모르겠습니다.",
+  "stage": "REPORT",
+  "field": "정보·컴퓨터",
+  "tags": [
+   "상관관계",
+   "인과",
+   "보고서 작성"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": null,
+  "resolved": false,
+  "resolution": null,
+  "createdAt": 1789869600000,
+  "updatedAt": 1789869600000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "research/seed-r21": {
+  "title": "유전 알고리즘으로 푸는 학교 시간표 배정 문제",
+  "summary": "교사·교실·학급의 제약 조건을 만족하는 주간 시간표를 유전 알고리즘으로 탐색했다. 3개 학년 24학급 규모에서 필수 제약을 모두 만족하는 해를 평균 400세대 안에 찾았다.",
+  "field": "정보·컴퓨터",
+  "keywords": [
+   "유전 알고리즘",
+   "최적화",
+   "시간표",
+   "제약 조건"
+  ],
+  "limitations": "선택 과목 이동 수업은 다루지 않았고, 교사 선호도 같은 약한 제약의 가중치를 임의로 정했다.",
+  "authorId": null,
+  "publishedAt": 1789948800000,
+  "report": null,
+  "isExample": true
+ },
+ "pains/seed-p041": {
+  "title": "유전 알고리즘이 지역 최적해에 갇혀서 더 나아지지 않아요",
+  "body": "200세대쯤부터 적합도가 전혀 오르지 않습니다. 돌연변이율을 올리면 수렴이 안 되고요.",
+  "stage": "EXPERIMENT",
+  "field": "정보·컴퓨터",
+  "tags": [
+   "유전 알고리즘",
+   "지역 최적해",
+   "최적화"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": "seed-r21",
+  "resolved": true,
+  "resolution": "엘리트 보존 개수를 줄이고 정체 시 돌연변이율을 일시적으로 높이는 방식을 넣었습니다.",
+  "createdAt": 1789952400000,
+  "updatedAt": 1789952400000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "pains/seed-p042": {
+  "title": "적합도 함수의 가중치를 정하는 근거가 없습니다",
+  "body": "제약 위반마다 벌점을 주는데 그 값이 전부 감입니다. 심사에서 근거를 물으면 답할 수가 없어요.",
+  "stage": "DESIGN",
+  "field": "정보·컴퓨터",
+  "tags": [
+   "적합도 함수",
+   "가중치",
+   "제약 조건"
+  ],
+  "isAnonymous": true,
+  "authorId": null,
+  "researchId": null,
+  "resolved": false,
+  "resolution": null,
+  "createdAt": 1789956000000,
+  "updatedAt": 1789956000000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "research/seed-r22": {
+  "title": "몬테카를로 방법으로 추정한 원주율과 표본 수에 따른 오차",
+  "summary": "무작위 점 찍기와 뷔퐁의 바늘 두 방법으로 원주율을 추정하고, 표본 수 N에 따른 오차가 1/√N에 비례해 줄어드는지 확인했다. 두 방법 모두 이론과 일치했으며 바늘 방법의 분산이 더 컸다.",
+  "field": "수학",
+  "keywords": [
+   "몬테카를로",
+   "원주율",
+   "확률",
+   "시뮬레이션"
+  ],
+  "limitations": "의사 난수 생성기의 품질이 결과에 미치는 영향은 다루지 않았다.",
+  "authorId": null,
+  "publishedAt": 1790035200000,
+  "report": null,
+  "isExample": true
+ },
+ "pains/seed-p043": {
+  "title": "시뮬레이션 결과를 로그 그래프로 그리는 법을 모르겠어요",
+  "body": "오차가 1/√N으로 줄어드는 걸 보여 주고 싶은데 그냥 그리면 곡선이라 잘 안 보입니다.",
+  "stage": "REPORT",
+  "field": "수학",
+  "tags": [
+   "로그 그래프",
+   "시각화",
+   "오차"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": "seed-r22",
+  "resolved": true,
+  "resolution": "양 축을 로그 눈금으로 바꾸니 기울기 -1/2인 직선으로 나타났습니다.",
+  "createdAt": 1790038800000,
+  "updatedAt": 1790038800000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "pains/seed-p044": {
+  "title": "수학 탐구 주제가 이미 다 나와 있는 것 같아요",
+  "body": "몬테카를로로 원주율 구하기는 너무 흔하다고 합니다. 흔한 주제에서 새로운 점을 어떻게 만들 수 있을까요?",
+  "stage": "TOPIC",
+  "field": "수학",
+  "tags": [
+   "주제 선정",
+   "독창성",
+   "수학 탐구"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": null,
+  "resolved": false,
+  "resolution": null,
+  "createdAt": 1790042400000,
+  "updatedAt": 1790042400000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "research/seed-r23": {
+  "title": "SIR 모형으로 본 학교 내 독감 확산과 등교 중지 효과",
+  "summary": "학교 보건실의 독감 결석 자료에 SIR 모형을 맞추어 기초감염재생산수를 추정하고, 등교 중지 기간에 따른 최대 감염자 수 변화를 시뮬레이션했다. R0는 약 1.9였고 5일 등교 중지가 정점을 30% 낮추는 것으로 나타났다.",
+  "field": "수학",
+  "keywords": [
+   "SIR 모형",
+   "감염병 모델링",
+   "미분방정식",
+   "기초감염재생산수"
+  ],
+  "limitations": "학년 간 접촉 구조와 백신 접종률을 고려하지 않은 단순 모형이며, 결석 자료가 실제 감염자 수와 다를 수 있다.",
+  "authorId": null,
+  "publishedAt": 1790121600000,
+  "report": null,
+  "isExample": true
+ },
+ "pains/seed-p045": {
+  "title": "실제 데이터에 모형 매개변수를 맞추는 방법을 모르겠습니다",
+  "body": "감염률과 회복률을 손으로 바꿔 가며 눈대중으로 맞추고 있어요. 더 객관적인 방법이 있나요?",
+  "stage": "ANALYSIS",
+  "field": "수학",
+  "tags": [
+   "매개변수 추정",
+   "SIR 모형",
+   "최소제곱법"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": "seed-r23",
+  "resolved": true,
+  "resolution": "오차 제곱합을 최소화하는 값을 격자 탐색으로 찾고, 그 과정을 부록에 실었습니다.",
+  "createdAt": 1790125200000,
+  "updatedAt": 1790125200000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "pains/seed-p046": {
+  "title": "학교 결석 자료를 연구에 써도 되는지 걱정입니다",
+  "body": "보건실에서 받은 자료에 학년·반이 들어 있습니다. 개인정보 문제가 없으려면 어떻게 처리해야 하나요?",
+  "stage": "TOPIC",
+  "field": "수학",
+  "tags": [
+   "개인정보",
+   "연구 윤리",
+   "자료 수집"
+  ],
+  "isAnonymous": true,
+  "authorId": null,
+  "researchId": null,
+  "resolved": false,
+  "resolution": null,
+  "createdAt": 1790128800000,
+  "updatedAt": 1790128800000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "research/seed-r24": {
+  "title": "스마트폰 사용 시간과 수면의 질: 고등학생 설문 연구",
+  "summary": "고등학생 212명을 대상으로 취침 전 스마트폰 사용 시간과 피츠버그 수면의 질 지수를 조사했다. 취침 전 사용 시간이 1시간 늘 때 수면의 질 점수가 평균 0.8점 나빠지는 약한 상관(r=0.31)이 있었다.",
+  "field": "심리",
+  "keywords": [
+   "수면의 질",
+   "스마트폰 사용",
+   "설문 조사",
+   "상관 분석"
+  ],
+  "limitations": "자기 보고식 설문이라 사용 시간이 부정확할 수 있고, 한 학교 학생만 조사했다.",
+  "authorId": null,
+  "publishedAt": 1790208000000,
+  "report": null,
+  "isExample": true
+ },
+ "pains/seed-p047": {
+  "title": "설문 응답률이 너무 낮아요",
+  "body": "온라인 설문 링크를 돌렸는데 600명 중 70명만 응답했습니다. 응답률을 높이는 방법이 있을까요?",
+  "stage": "EXPERIMENT",
+  "field": "심리",
+  "tags": [
+   "설문 조사",
+   "응답률",
+   "표본"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": "seed-r24",
+  "resolved": true,
+  "resolution": "담임 선생님 협조로 조회 시간에 5분을 받아 응답 수를 3배로 늘렸습니다.",
+  "createdAt": 1790211600000,
+  "updatedAt": 1790211600000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "pains/seed-p048": {
+  "title": "설문 문항을 직접 만들어도 되는지 모르겠어요",
+  "body": "기존 척도를 번역해서 쓰려면 허락이 필요한가요? 직접 만든 문항은 신뢰도를 어떻게 보여 주나요?",
+  "stage": "DESIGN",
+  "field": "심리",
+  "tags": [
+   "설문 문항",
+   "신뢰도",
+   "척도"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": "seed-r24",
+  "resolved": false,
+  "resolution": null,
+  "createdAt": 1790215200000,
+  "updatedAt": 1790215200000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "research/seed-r25": {
+  "title": "배경 음악의 빠르기가 단기 기억 과제 수행에 미치는 영향",
+  "summary": "무음, 느린 음악(60 BPM), 빠른 음악(140 BPM) 조건에서 숫자 폭 과제와 단어 회상 과제를 수행하게 했다. 빠른 음악 조건에서 단어 회상 점수가 유의하게 낮았고 숫자 폭은 차이가 없었다.",
+  "field": "심리",
+  "keywords": [
+   "단기 기억",
+   "배경 음악",
+   "인지 실험",
+   "집중력"
+  ],
+  "limitations": "참가자 내 설계에서 연습 효과를 완전히 상쇄하지 못했고, 음악 선호도를 통제하지 않았다.",
+  "authorId": null,
+  "publishedAt": 1790294400000,
+  "report": null,
+  "isExample": true
+ },
+ "pains/seed-p049": {
+  "title": "같은 사람이 여러 조건을 하면 연습 효과가 생겨요",
+  "body": "세 번째 조건에서는 다들 과제에 익숙해져 점수가 오릅니다. 순서를 어떻게 배치해야 하나요?",
+  "stage": "DESIGN",
+  "field": "심리",
+  "tags": [
+   "연습 효과",
+   "실험 설계",
+   "인지 실험"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": "seed-r25",
+  "resolved": true,
+  "resolution": "조건 순서를 참가자마다 다르게 하는 역균형화를 적용했습니다.",
+  "createdAt": 1790298000000,
+  "updatedAt": 1790298000000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "pains/seed-p050": {
+  "title": "실험 참가자를 모으기가 어렵습니다",
+  "body": "한 명당 20분이 걸려서 친구들이 잘 안 해 줍니다. 최소 몇 명이면 통계 분석이 가능한가요?",
+  "stage": "EXPERIMENT",
+  "field": "심리",
+  "tags": [
+   "참가자 모집",
+   "표본 크기",
+   "통계"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": null,
+  "resolved": false,
+  "resolution": null,
+  "createdAt": 1790301600000,
+  "updatedAt": 1790301600000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "research/seed-r26": {
+  "title": "우리 동네 전통 시장 상인의 간편 결제 도입 요인",
+  "summary": "전통 시장 상인 15명을 반구조화 면담해 간편 결제를 도입하거나 꺼리는 이유를 분석했다. 수수료 부담보다 '사용법을 물어볼 사람이 없다'는 점이 가장 큰 장벽이었다.",
+  "field": "사회",
+  "keywords": [
+   "전통 시장",
+   "간편 결제",
+   "면담 조사",
+   "질적 연구"
+  ],
+  "limitations": "한 시장의 상인만 면담했고, 면담 분석을 연구자 한 명이 해 해석이 치우쳤을 수 있다.",
+  "authorId": null,
+  "publishedAt": 1790380800000,
+  "report": null,
+  "isExample": true
+ },
+ "pains/seed-p051": {
+  "title": "면담 녹음을 글로 옮기는 데 시간이 너무 걸려요",
+  "body": "30분 면담 하나를 전사하는 데 3시간이 걸립니다. 15명 분량을 어떻게 감당해야 할지 막막해요.",
+  "stage": "ANALYSIS",
+  "field": "사회",
+  "tags": [
+   "면담 조사",
+   "전사",
+   "질적 연구"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": "seed-r26",
+  "resolved": true,
+  "resolution": "음성 인식으로 초안을 만든 뒤 들으면서 고치는 방식으로 시간을 절반 이하로 줄였습니다.",
+  "createdAt": 1790384400000,
+  "updatedAt": 1790384400000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "pains/seed-p052": {
+  "title": "면담을 거절당하는 일이 많아 표본이 치우칩니다",
+  "body": "바쁜 가게는 대부분 거절해서 한가한 가게 위주로만 면담했습니다. 이걸 한계로만 쓰면 되는 걸까요?",
+  "stage": "EXPERIMENT",
+  "field": "사회",
+  "tags": [
+   "표본 편향",
+   "면담 조사",
+   "현장 조사"
+  ],
+  "isAnonymous": true,
+  "authorId": null,
+  "researchId": null,
+  "resolved": false,
+  "resolution": null,
+  "createdAt": 1790388000000,
+  "updatedAt": 1790388000000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "research/seed-r27": {
+  "title": "또래 튜터링이 수학 불안과 성취도에 미치는 효과",
+  "summary": "1학년 두 학급에서 6주간 또래 튜터링을 운영하고 수학 불안 척도와 단원 평가 점수를 사전·사후 비교했다. 튜티 학생의 수학 불안이 유의하게 줄었고, 튜터 학생의 성취도도 함께 올랐다.",
+  "field": "교육",
+  "keywords": [
+   "또래 튜터링",
+   "수학 불안",
+   "학업 성취도",
+   "사전·사후 검사"
+  ],
+  "limitations": "무작위 배정이 아니라 학급 단위 비교였고, 기간이 6주로 짧았다.",
+  "authorId": null,
+  "publishedAt": 1790467200000,
+  "report": null,
+  "isExample": true
+ },
+ "pains/seed-p053": {
+  "title": "실험 집단과 비교 집단이 처음부터 달라요",
+  "body": "사전 검사에서 이미 두 반 평균이 5점 차이 납니다. 사후 점수를 그냥 비교하면 안 될 것 같은데요.",
+  "stage": "ANALYSIS",
+  "field": "교육",
+  "tags": [
+   "사전·사후 검사",
+   "집단 비교",
+   "통계"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": "seed-r27",
+  "resolved": true,
+  "resolution": "사후 점수가 아니라 향상 점수(사후-사전)를 비교하고, 사전 점수 차이를 한계로 적었습니다.",
+  "createdAt": 1790470800000,
+  "updatedAt": 1790470800000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "pains/seed-p054": {
+  "title": "보고서의 선행 연구 정리를 어떻게 써야 할지 모르겠어요",
+  "body": "논문을 여러 편 읽었는데 그냥 요약을 나열하게 됩니다. 내 연구와 연결되게 쓰는 요령이 있을까요?",
+  "stage": "REPORT",
+  "field": "교육",
+  "tags": [
+   "선행 연구",
+   "보고서 작성",
+   "글쓰기"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": null,
+  "resolved": false,
+  "resolution": null,
+  "createdAt": 1790474400000,
+  "updatedAt": 1790474400000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "research/seed-r28": {
+  "title": "변광성 측광 자료로 구한 세페이드 주기-광도 관계",
+  "summary": "공개된 측광 자료와 학교 망원경 관측을 합쳐 세페이드 변광성 6개의 광도 곡선을 그리고 주기를 구했다. 주기-광도 관계의 기울기는 문헌값과 오차 범위 안에서 일치했다.",
+  "field": "천문",
+  "keywords": [
+   "변광성",
+   "측광",
+   "세페이드",
+   "주기-광도 관계"
+  ],
+  "limitations": "직접 관측한 날이 11일뿐이라 주기가 긴 별은 공개 자료에 크게 의존했고, 성간 소광을 보정하지 않았다.",
+  "authorId": null,
+  "publishedAt": 1790553600000,
+  "report": null,
+  "isExample": true
+ },
+ "pains/seed-p055": {
+  "title": "날씨 때문에 관측 일수가 너무 부족합니다",
+  "body": "한 달 동안 맑은 밤이 나흘뿐이었습니다. 변광 주기를 구하려면 자료가 한참 모자라요.",
+  "stage": "EXPERIMENT",
+  "field": "천문",
+  "tags": [
+   "관측",
+   "날씨",
+   "변광성"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": "seed-r28",
+  "resolved": true,
+  "resolution": "AAVSO 공개 자료를 함께 쓰고, 직접 관측은 검증용으로 활용했습니다.",
+  "createdAt": 1790557200000,
+  "updatedAt": 1790557200000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "pains/seed-p056": {
+  "title": "비교성을 어떻게 골라야 하는지 모르겠어요",
+  "body": "측광할 때 비교성 밝기가 변하면 안 된다는데 어떤 별이 안정적인지 어떻게 확인하나요?",
+  "stage": "DESIGN",
+  "field": "천문",
+  "tags": [
+   "측광",
+   "비교성",
+   "천체 관측"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": "seed-r28",
+  "resolved": false,
+  "resolution": null,
+  "createdAt": 1790560800000,
+  "updatedAt": 1790560800000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "research/seed-r29": {
+  "title": "모래 입자 크기와 함수비에 따른 사면 안식각 변화",
+  "summary": "체로 분류한 세 가지 크기의 모래에 물을 0~20% 섞어 안식각을 측정했다. 함수비 5~10%에서 안식각이 가장 컸고, 15%를 넘으면 급격히 무너졌다.",
+  "field": "지구과학",
+  "keywords": [
+   "안식각",
+   "사면 붕괴",
+   "입자 크기",
+   "함수비"
+  ],
+  "limitations": "실제 사면과 달리 작은 상자에서 실험해 규모 효과가 있을 수 있고, 다짐 정도를 통제하지 못했다.",
+  "authorId": null,
+  "publishedAt": 1790640000000,
+  "report": null,
+  "isExample": true
+ },
+ "pains/seed-p057": {
+  "title": "안식각을 잴 때마다 5도씩 차이가 나요",
+  "body": "모래를 붓는 속도나 높이에 따라 각도가 달라집니다. 측정 방법을 어떻게 표준화해야 할까요?",
+  "stage": "EXPERIMENT",
+  "field": "지구과학",
+  "tags": [
+   "안식각",
+   "측정 방법",
+   "재현성"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": "seed-r29",
+  "resolved": true,
+  "resolution": "깔때기 높이와 구멍 크기를 고정하고, 옆에서 찍은 사진으로 각도를 분석했습니다.",
+  "createdAt": 1790643600000,
+  "updatedAt": 1790643600000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "pains/seed-p058": {
+  "title": "젖은 모래를 균일하게 섞는 게 생각보다 어렵습니다",
+  "body": "물을 넣으면 덩어리가 져서 함수비가 부분마다 다릅니다. 균일하게 만드는 요령이 있을까요?",
+  "stage": "EXPERIMENT",
+  "field": "지구과학",
+  "tags": [
+   "함수비",
+   "시료 준비",
+   "모래"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": "seed-r29",
+  "resolved": false,
+  "resolution": null,
+  "createdAt": 1790647200000,
+  "updatedAt": 1790647200000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "research/seed-r30": {
+  "title": "커피 찌꺼기 바이오차의 메틸렌블루 흡착 성능",
+  "summary": "커피 찌꺼기를 300~500 ℃에서 탄화해 바이오차를 만들고 메틸렌블루 수용액에 대한 흡착량을 비교했다. 500 ℃에서 만든 시료의 흡착량이 가장 컸고, 흡착 등온선은 랭뮤어 모형에 잘 맞았다.",
+  "field": "재료",
+  "keywords": [
+   "바이오차",
+   "커피 찌꺼기",
+   "염료 흡착",
+   "메틸렌블루"
+  ],
+  "limitations": "비표면적을 직접 측정하지 못했고, 탄화 온도는 전기로 표시값에 의존했다.",
+  "authorId": null,
+  "publishedAt": 1790726400000,
+  "report": null,
+  "isExample": true
+ },
+ "pains/seed-p059": {
+  "title": "학교 전기로에서 탄화하면 연기와 냄새가 심합니다",
+  "body": "커피 찌꺼기를 태우면 실험실 전체에 연기가 차서 중단했습니다. 산소를 차단하면서 안전하게 탄화하는 방법이 있을까요?",
+  "stage": "EXPERIMENT",
+  "field": "재료",
+  "tags": [
+   "탄화",
+   "안전",
+   "바이오차"
+  ],
+  "isAnonymous": false,
+  "authorId": null,
+  "researchId": "seed-r30",
+  "resolved": true,
+  "resolution": "뚜껑 있는 도가니에 넣고 알루미늄 포일로 감싼 뒤 후드 안에서 가열했습니다.",
+  "createdAt": 1790730000000,
+  "updatedAt": 1790730000000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ },
+ "pains/seed-p060": {
+  "title": "흡착 등온선 모형을 어떻게 골라야 하나요",
+  "body": "랭뮤어와 프로인틀리히 둘 다 R²가 0.9를 넘습니다. 어느 쪽이 맞다고 써야 할지 모르겠어요.",
+  "stage": "ANALYSIS",
+  "field": "재료",
+  "tags": [
+   "흡착",
+   "등온선",
+   "모형 적합"
+  ],
+  "isAnonymous": true,
+  "authorId": null,
+  "researchId": null,
+  "resolved": false,
+  "resolution": null,
+  "createdAt": 1790733600000,
+  "updatedAt": 1790733600000,
+  "meTooCount": 0,
+  "commentCount": 0,
+  "isExample": true
+ }
+}

@@ -1,0 +1,80 @@
+/* 캡션·상호 참조·목차·수식 노드의 화면 서식 (에디터 전용 CSS. 내보내기는 같은 클래스 이름을 쓴다) */
+.doc-content .doc-caption {
+  text-align: center;
+  font-size: 0.92em;
+  color: #3f3f46;
+  margin-top: 0.35em;
+}
+.doc-content .doc-caption-label {
+  font-weight: 600;
+  user-select: none;
+}
+.doc-content .doc-cross-ref {
+  color: #1d4ed8;
+  border-radius: 3px;
+  padding: 0 1px;
+  white-space: nowrap;
+  cursor: default;
+}
+.doc-content .doc-cross-ref[data-broken="true"] {
+  color: #b91c1c;
+  background: #fee2e2;
+  text-decoration: underline wavy #b91c1c;
+}
+.doc-content .doc-caption-list {
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  padding: 0.6rem 0.9rem;
+}
+.doc-content .doc-caption-list-title {
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+}
+.doc-content .doc-caption-list ol {
+  list-style: none;
+  padding-left: 0;
+}
+.doc-content .doc-caption-list-label {
+  font-weight: 600;
+}
+.doc-content .doc-caption-list-empty {
+  color: #52525b;
+}
+.doc-content .doc-math-inline {
+  cursor: pointer;
+  border-radius: 3px;
+  padding: 0 1px;
+}
+.doc-content .doc-math-block {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  border-radius: 6px;
+  padding: 0.25rem 0.5rem;
+  cursor: pointer;
+}
+.doc-content .doc-math-body {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  text-align: center;
+}
+.doc-content .doc-math-body .katex-display {
+  margin: 0.4em 0;
+}
+.doc-content .doc-math-tag {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+.doc-content .doc-math-empty {
+  color: #52525b;
+  font-style: italic;
+}
+.doc-content .ProseMirror-selectednode.doc-math-inline,
+.doc-content .ProseMirror-selectednode.doc-math-block,
+.doc-content .ProseMirror-selectednode.doc-cross-ref,
+.doc-content .ProseMirror-selectednode.doc-caption-list,
+.doc-content img.ProseMirror-selectednode {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
