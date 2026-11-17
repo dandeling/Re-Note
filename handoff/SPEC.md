@@ -41,7 +41,8 @@
 
 - **1차 실행 종료 조건**: P0 전부가 위 기준을 만족하고, Playwright(로컬 모크) 테스트가 P0마다 1개 이상 통과. 남은 시간에 P1을 위에서부터.
 - **2차 실행 종료 조건**: 1차 점검에서 나온 결함을 먼저 고치고, P1을 끝낸 뒤 P2를 위에서부터. 끝나기 전에 전체 테스트를 다시 돌린다.
-- 산출물 목록: `artifact/index.html`, `core.js`, `mod-*.js`, `seed.json`(+생성 스크립트), `dev-mock.js`, `dev-server.mjs`, `tests/*.spec.cjs`, `PROGRESS.md`, `docs/decisions.md`.
+- 산출물 목록: `artifact/index.html`, `core.js`, `mod-*.js`, `seed.json`(+생성 스크립트), `dev-mock.js`, `dev-server.mjs`, `tests/*.spec.cjs`, `PROGRESS.md`, `DECISIONS.md`, `CONTRACT.md`, `HANDOFF.md`(결과 주소, 끝낸 것·못 끝낸 것, 확인 못 한 것, **사람이 볼 것** 목록), 막힌 것이 있으면 `BLOCKED.md`.
+- **시각 종료 조건이 우선한다**: 종료 시각과 실행 규칙은 `PROMPT.md`의 1차·2차 프롬프트를 따른다(1차 20:25, 2차 21:35 강제 종료, 마감 15분 전부터 새 작업 금지). 위 조건을 다 채우지 못해도 그 시각에는 동작하는 상태를 게시하고 `HANDOFF.md`를 쓰고 끝낸다.
 
 ---
 
