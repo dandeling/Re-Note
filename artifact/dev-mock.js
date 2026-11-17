@@ -66,11 +66,30 @@
     if (/\s$/.test(before)) return "측정값의 변화 경향을 비교하여 분석하였다.";
     return " 측정값의 변화 경향을 비교하여 분석하였다.";
   }
+  // AI 사용 동의(내장 permissions 흉내). ?consent=prompt 면 첫 sample 호출이나 permissions.request 때 묻는다
+  // (답은 window.__mockConsentAnswer: "grant"(기본) | "deny" | "dismiss"), ?consent=denied 는 거절된 상태, ?nopermissions=1 은 permissions 없음.
+  // 묻는 횟수 window.__mockConsentAsked, sample 호출 시도 수(동의 전 포함) window.__mockSampleAttempts.
+  let sampleConsent = q.get("consent") === "prompt" ? "prompt" : q.get("consent") === "denied" ? "denied" : "granted";
+  async function askConsent() {
+    window.__mockConsentAsked = (window.__mockConsentAsked || 0) + 1;
+    await new Promise((r) => setTimeout(r, 30));
+    const a = window.__mockConsentAnswer || "grant";
+    if (a === "grant") sampleConsent = "granted"; else if (a === "deny") sampleConsent = "denied";
+  }
+  const permissions = {
+    async state(name) { return name === undefined ? { sample: sampleConsent } : name === "sample" ? sampleConsent : "unavailable"; },
+    async request(names) { if (sampleConsent === "prompt" && (!names || names.includes("sample"))) await askConsent(); return { sample: sampleConsent }; },
+    async manage() { window.__mockManageOpened = (window.__mockManageOpened || 0) + 1; if (window.__mockManageGrants) sampleConsent = "granted"; },
+  };
   async function sample(input, opts = {}) {
+    window.__mockSampleAttempts = (window.__mockSampleAttempts || 0) + 1;
+    if (sampleConsent === "prompt") await askConsent();
+    if (sampleConsent !== "granted") throw { code: "not_granted", message: "not granted" };
     const text = typeof input === "string" ? input : input[input.length - 1].content;
     const fn = window.__mockSample;
     if (!fn && text.includes("<before_cursor>")) {
       window.__mockAutocompleteCalls = (window.__mockAutocompleteCalls || 0) + 1;
+      window.__mockAutocompletePrompt = text;
       await new Promise((r) => setTimeout(r, window.__mockAutocompleteDelay || 50));
       if (opts.signal && opts.signal.aborted) throw { code: "cancelled", message: "aborted" };
       const out = mockCompletion(text);
@@ -78,6 +97,8 @@
       return { text: out, truncated: false, modelTierApplied: opts.modelTier || "default" };
     }
     const out = fn ? await fn(text, opts, input) : "가짜 AI 응답: " + text.slice(0, 60);
+    if (opts.signal && opts.signal.aborted) throw { code: "cancelled", message: "aborted" };
+    if (!String(out == null ? "" : out).trim()) throw { code: "empty_completion", message: "empty" }; // 실제 런타임은 빈 답을 이 코드로 거절한다
     if (opts.onText) opts.onText({ text: out, delta: out });
     return { text: out, truncated: false };
   }
@@ -92,7 +113,7 @@
     async delete(id) { blobs.delete(id); },
   };
   window.__mockAssets = blobs;
-  const table = { db: uid ? { doc, collection } : null, user, sample: q.get("nosample") ? null : sample, downloads, assets: uid && !q.get("noassets") ? assets : null };
+  const table = { db: uid ? { doc, collection } : null, user, sample: q.get("nosample") ? null : sample, permissions: q.get("nopermissions") ? null : permissions, downloads, assets: uid && !q.get("noassets") ? assets : null };
   window.claude = { use: async (name) => (name in table ? table[name] : null) };
   window.__mockDb = { store, reset() { for (const k of Object.keys(store)) delete store[k]; persist(); }, seed(rows) { Object.assign(store, clone(rows)); persist(); } };
 })();

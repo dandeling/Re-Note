@@ -3989,32 +3989,53 @@ ${HEADS.map((hl, i) => `.rn-paper .rn-h${i + 1} { font-family: var(--fmt-${hl}-f
     // ---------- 글쓰기 자동완성 연결 (mod-autocomplete.js) ----------
     const AC_TYPES = ["paragraph", "quote", "item"]; // 제목·캡션·코드·표 칸·수식에서는 쓰지 않는다
     const acLinePlain = (L) => (L.k === "atom" ? ({ table: "[표]", figure: "[그림]", math: "[수식]" }[L.type] || "") : inlPlain(L.content, numbering));
+    /** 캐럿 DOM 위치 [node, offset]. 조합 중에는 IME가 조합 글자를 선택 범위로 잡기도 해서(윈도 한글 IME),
+     *  한 텍스트 노드 안의 짧은 범위면 그 끝을 캐럿으로 본다. 아니면 null */
+    function acCaretDom() {
+      const sel = window.getSelection();
+      if (!sel || !sel.rangeCount) return null;
+      const r = sel.getRangeAt(0);
+      if (!blocksEl.contains(r.startContainer) || inSub(r.startContainer)) return null;
+      if (r.collapsed) return [r.startContainer, r.startOffset];
+      if (composing && r.startContainer === r.endContainer && r.startContainer.nodeType === 3 && r.endOffset - r.startOffset <= 2) return [r.endContainer, r.endOffset];
+      return null;
+    }
     const acBridge = {
       blocksEl, toolbar, blocked: !!blocked,
       setResetHandler(fn) { acReset = typeof fn === "function" ? fn : null; },
-      /** 본문에 캐럿(접힌 선택)이 있으면 그 모델 위치, 아니면 null */
-      caretPoint() {
-        if (composing) return null;
-        const sel = window.getSelection();
-        if (!sel || !sel.rangeCount || !sel.isCollapsed) return null;
-        const r = sel.getRangeAt(0);
-        if (!blocksEl.contains(r.startContainer) || inSub(r.startContainer)) return null;
-        const s = rangeToSel(r);
-        return s && s.collapsed ? s.a : null;
+      isComposing: () => composing,
+      /** 열린 조합을 확정한다(포커스를 잠깐 뺐다 돌려준다 → compositionend가 이 안에서 동기로 온다). 확정됐으면 true */
+      commitComposition() {
+        if (!composing) return true;
+        blocksEl.blur();
+        blocksEl.focus({ preventScroll: true });
+        return !composing;
       },
-      /** 자동완성을 띄울 자리면 { key, point, slot, lineChars, before, title, section }, 아니면 null */
+      /** 본문에 캐럿이 있으면 그 위치(조합 중이면 조합 글자까지 센 DOM 기준 위치), 아니면 null */
+      caretPoint() {
+        const c = acCaretDom();
+        if (!c) return null;
+        const p = domToPoint(c[0], c[1], "start");
+        return p ? { line: p.line, off: p.off } : null;
+      },
+      /** 캐럿의 DOM 위치 [node, offset] (겹쳐 그리기 위치 계산용) */
+      caretDom: acCaretDom,
+      /** 자동완성을 띄울 자리면 { key, point, slot, lineChars, before, title, section, composing }, 아니면 null.
+       *  조합 중에는 모델이 아직 갱신 전이라 그 줄 글자를 DOM에서 읽는다(조합 중 글자 포함, 읽기만 한다). */
       context() {
-        if (blocked || composing || popup || document.activeElement !== blocksEl) return null;
+        if (blocked || popup || document.activeElement !== blocksEl) return null;
         const p = acBridge.caretPoint();
         if (!p) return null;
         const lines = linesNow();
         const L = lines[p.line];
-        if (!L || L.k !== "text" || !AC_TYPES.includes(L.type) || p.off !== lineLen(L)) return null;
+        if (!L || L.k !== "text" || !AC_TYPES.includes(L.type)) return null;
         const info = lineInfo(p.line);
         const el = info && blkEl(info.b.id);
         const slot = el && (info.b.type === "list" ? el.querySelector(`:scope > .rn-slot[data-item="${info.item}"]`) : el);
         if (!slot) return null;
-        const lineText = inlPlain(L.content, numbering);
+        const comp = composing;
+        if (p.off !== (comp ? measureNode(slot) : lineLen(L))) return null;
+        const lineText = inlPlain(comp ? parseSlot(slot) : L.content, numbering);
         const parts = [lineText];
         let total = lineText.length, section = "";
         for (let i = p.line - 1; i >= 0; i--) {
@@ -4024,11 +4045,11 @@ ${HEADS.map((hl, i) => `.rn-paper .rn-h${i + 1} { font-family: var(--fmt-${hl}-f
           if (section && total >= MAX_AC_BEFORE) break;
         }
         const before = parts.join("\n").slice(-MAX_AC_BEFORE);
-        return { key: JSON.stringify([title, section, before]), point: p, slot, lineChars: lineText.replace(/\s/g, "").length, before, title, section };
+        return { key: JSON.stringify([title, section, before]), point: p, slot, lineChars: lineText.replace(/\s/g, "").length, before, title, section, composing: comp };
       },
-      /** 제안 글자를 캐럿 자리에 넣는다(편집 한 번 = 실행 취소 한 단계) */
+      /** 제안 글자를 캐럿 자리에 넣는다(편집 한 번 = 실행 취소 한 단계). 조합 중이면 넣지 않는다(먼저 commitComposition) */
       accept(text, ctx) {
-        if (blocked || !text) return false;
+        if (blocked || !text || composing) return false;
         const lines = linesEdit();
         const p = linesInsertText(lines, clampPt(lines, ctx.point), String(text));
         commit(lines, p, p, "struct");

@@ -223,22 +223,208 @@ async function main() {
     await page.keyboard.press("Escape");
   });
 
-  await test("한글 조합(IME) 중에는 요청·표시하지 않고 조합이 끝나면 다시 판단한다", async () => {
-    await caretEnd(page, 1);
-    await page.keyboard.type(" 그러나");
-    await waitGhost(page);
-    const cdp = await page.context().newCDPSession(page);
-    const n0 = await calls(page);
+  // ---------- 한글 조합(IME)이 열린 채 멈출 때 ----------
+  // 한국어 사용자는 마지막 글자를 치고 멈추면 그 글자가 아직 조합 중이다(space 등을 치기 전까지 compositionend가 오지 않는다).
+  const overlay = (pg) => pg.$(".rn-paper > .rn-ghost-ov");
+  const waitOverlay = (pg, timeout = 4500) => pg.waitForSelector(".rn-paper > .rn-ghost-ov", { timeout });
+  const anyGhost = (pg) => pg.$("[data-ac-ghost]");
+  /** i번째 블록의 화면 글자(제안·빈 줄 표시 제외) */
+  const domText = (pg, i) => pg.evaluate((k) => { const el = document.querySelectorAll("#ed-blocks > .rn-blk")[k].cloneNode(true); el.querySelectorAll("[data-ac-ghost], .rn-fill").forEach((x) => x.remove()); return el.textContent; }, i);
+  const noteText = (pg) => pg.$eval("#tb-autocomplete-note", (el) => el.textContent);
+  let cdp;
+
+  await test("한글 조합이 열린 채 멈춰도 제안이 뜬다: 본문 밖 겹침(캐럿 자리), 조합 글자는 그대로, 프롬프트에 조합 글자 포함", async () => {
+    await freshDoc(page, projectId, [P("k1", BASE_TEXT)], "조합 시험");
+    await caretEnd(page, 0);
+    await page.keyboard.type(", 그러나 ");
+    cdp = await page.context().newCDPSession(page);
     await cdp.send("Input.imeSetComposition", { text: "ㄱ", selectionStart: 1, selectionEnd: 1 });
-    assert(!(await ghost(page)), "조합 시작 → 사라짐");
     await cdp.send("Input.imeSetComposition", { text: "결", selectionStart: 1, selectionEnd: 1 });
-    await noGhostFor(page, 2200);
-    assert((await calls(page)) === n0, "조합 중 요청 없음");
-    await cdp.send("Input.insertText", { text: "결" });
-    await page.waitForFunction(() => /그러나결$/.test(RN.editor.getDoc().content.blocks[1].content.map((n) => n.text || "").join("")));
-    await waitGhost(page);
-    assert(!(await blockText(page, 1)).includes("측정값의 변화 경향을 비교하여 분석하였다.결"), "조합 글자가 제안과 섞이지 않음");
+    const ov = await waitOverlay(page);
+    const info = await ov.evaluate((el) => ({ inEd: !!el.closest("#ed-blocks"), hidden: el.getAttribute("aria-hidden"), text: el.textContent, ce: el.closest("[contenteditable='true']") }));
+    assert(!info.inEd && !info.ce && info.hidden === "true", "본문(contenteditable) 밖 " + JSON.stringify(info));
+    assert(info.text.trim().startsWith(SUGGEST), "제안 글자 " + info.text);
+    assert(!(await page.$("#ed-blocks [data-ac-ghost]")), "본문 안에는 아무것도 넣지 않는다");
+    assert((await domText(page, 0)) === BASE_TEXT + ", 그러나 결", "조합 글자 그대로: " + (await domText(page, 0)));
+    assert((await blockText(page, 0)) === BASE_TEXT + ", 그러나 ", "모델은 아직 조합 전(확정 전)");
+    const prompt = await page.evaluate(() => window.__mockAutocompletePrompt || "");
+    assert(prompt.includes(", 그러나 결</before_cursor>"), "캐럿 앞 글에 조합 중 글자 포함");
+    const pos = await page.evaluate(() => {
+      const ov = document.querySelector(".rn-ghost-ov"), s = getSelection(), r = document.createRange();
+      r.setStart(s.focusNode, s.focusOffset);
+      const c = r.getClientRects()[0] || r.getBoundingClientRect(), o = ov.getBoundingClientRect(), slot = document.querySelector("#ed-blocks > .rn-blk").getBoundingClientRect();
+      return { cx: c.left, cy: c.top + c.height / 2, ox: o.left + parseFloat(ov.style.textIndent), oy: o.top, lh: parseFloat(getComputedStyle(ov).lineHeight), ol: o.left, sl: slot.left, ow: o.width, sw: slot.width };
+    });
+    assert(Math.abs(pos.cx - pos.ox) < 3 && pos.cy > pos.oy && pos.cy < pos.oy + pos.lh, "첫 줄은 캐럿 자리에서 시작 " + JSON.stringify(pos));
+    assert(Math.abs(pos.ol - pos.sl) < 2 && Math.abs(pos.ow - pos.sw) < 2, "다음 줄은 문단 폭 안에서 줄바꿈 " + JSON.stringify(pos));
+    assert((await noteText(page)) === "", "상태 글자 비움");
+  });
+
+  await test("조합 중 제안이 떠 있는 동안에도 모델·자동 저장·초안·마크다운·HTML·문서 글자에 제안이 없다", async () => {
+    assert(await overlay(page), "겹친 제안이 떠 있음");
+    await page.evaluate(() => window.dispatchEvent(new Event("pagehide")));
+    await sleep(400);
+    const r = await page.evaluate(() => {
+      const doc = RN.editor.getDoc();
+      return {
+        model: JSON.stringify(doc.content), md: RN.docs.exportMarkdown(doc), html: RN.docs.exportHtml(doc), text: RN.editor.getDocText(),
+        saved: JSON.stringify(window.__mockDb.store[`data/users/${RN.caps.uid}/docs/items/${RN.editor.docId}`] || ""),
+        drafts: Object.keys(localStorage).filter((k) => k.includes(RN.editor.docId)).map((k) => localStorage.getItem(k)).join(""),
+      };
+    });
+    for (const [k, v] of Object.entries(r)) assert(!v.includes("측정값의 변화") && !v.includes("Tab으로"), k + "에 제안 문구: " + v.slice(0, 160));
+    assert(await overlay(page), "제안은 그대로");
+  });
+
+  await test("조합 중 제안이 떠도 이어 치면 정상 합성: 받침이 붙으면 제안을 버리고, 글자 깨짐·중복 없음", async () => {
+    await cdp.send("Input.imeSetComposition", { text: "겱", selectionStart: 1, selectionEnd: 1 });
+    assert(!(await anyGhost(page)), "조합 글자가 바뀌면 제안을 버린다");
+    await cdp.send("Input.insertText", { text: "결" });                       // IME가 '결'을 확정하고
+    await cdp.send("Input.imeSetComposition", { text: "고", selectionStart: 1, selectionEnd: 1 }); // 'ㄱ'을 다음 글자로 넘긴다
+    await cdp.send("Input.imeSetComposition", { text: "과", selectionStart: 1, selectionEnd: 1 });
+    await cdp.send("Input.insertText", { text: "과" });
+    await page.waitForFunction((t) => RN.editor.getDoc().content.blocks[0].content.map((n) => n.text || "").join("") === t, BASE_TEXT + ", 그러나 결과", { timeout: 3000 });
+    assert((await domText(page, 0)) === BASE_TEXT + ", 그러나 결과", "화면 글자 = 모델: " + (await domText(page, 0)));
+    await waitGhost(page); // 확정 뒤에는 본문 안 제안
+    assert((await blockText(page, 0)) === BASE_TEXT + ", 그러나 결과", "제안은 모델에 없음");
     await page.keyboard.press("Escape");
+  });
+
+  await test("조합 중 Tab: 조합 글자를 먼저 확정하고 그 뒤에 제안을 넣는다(글자 순서·캐럿·실행 취소)", async () => {
+    await caretEnd(page, 0);
+    await page.keyboard.type(" ");
+    await cdp.send("Input.imeSetComposition", { text: "ㅂ", selectionStart: 1, selectionEnd: 1 });
+    await cdp.send("Input.imeSetComposition", { text: "분", selectionStart: 1, selectionEnd: 1 });
+    await waitOverlay(page);
+    await page.keyboard.press("Tab");
+    const want = BASE_TEXT + ", 그러나 결과 분 " + SUGGEST;
+    await page.waitForFunction((t) => RN.editor.getDoc().content.blocks[0].content.map((n) => n.text || "").join("") === t, want, { timeout: 3000 });
+    assert((await domText(page, 0)) === want, "화면 글자 순서: " + (await domText(page, 0)));
+    assert(!(await anyGhost(page)), "제안 사라짐");
+    assert(await page.evaluate(() => document.activeElement.id === "ed-blocks"), "포커스는 본문");
+    await page.keyboard.type("Z");
+    assert((await blockText(page, 0)) === want + "Z", "캐럿은 넣은 글 뒤: " + (await blockText(page, 0)));
+    await page.keyboard.press("Control+z");
+    await page.keyboard.press("Control+z");
+    assert((await blockText(page, 0)) === BASE_TEXT + ", 그러나 결과 분", "받아들이기만 취소(조합 글자는 남음): " + (await blockText(page, 0)));
+    await page.keyboard.press("Control+Shift+z");
+    assert((await blockText(page, 0)) === want, "다시 실행");
+  });
+
+  await test("IME가 조합 글자를 선택 범위로 잡아도(윈도 방식) 제안이 뜨고, IME가 먼저 확정한 뒤의 Tab도 받아들인다", async () => {
+    await caretEnd(page, 0);
+    await page.keyboard.type(" 그리고 ");
+    await cdp.send("Input.imeSetComposition", { text: "다", selectionStart: 0, selectionEnd: 1 });
+    await waitOverlay(page);
+    assert((await domText(page, 0)).endsWith(" 그리고 다"), "조합 글자 그대로");
+    await cdp.send("Input.insertText", { text: "다" }); // 같은 글자로 확정 → 제안 유지
+    await sleep(100);
+    assert(await overlay(page), "같은 글자로 확정되면 제안을 그대로 둔다");
+    await page.keyboard.press("Tab");
+    assert((await blockText(page, 0)).endsWith(" 그리고 다 " + SUGGEST), "받아들임: " + (await blockText(page, 0)));
+    assert(await page.evaluate(() => document.activeElement.id === "ed-blocks"), "포커스는 본문");
+  });
+
+  await test("응답이 3초 걸려도 제안이 뜨고, 기다리는 동안 토글 옆에 '생각 중…'", async () => {
+    await page.evaluate(() => { window.__mockAutocompleteDelay = 3000; });
+    await caretEnd(page, 0);
+    await page.keyboard.type(" 이어서 낙하 시간");
+    await page.waitForFunction(() => document.querySelector("#tb-autocomplete-note").textContent === "생각 중…", null, { timeout: 2600 });
+    await waitGhost(page, 5000);
+    assert((await noteText(page)) === "", "제안이 뜨면 상태 글자 비움");
+    await page.evaluate(() => { window.__mockAutocompleteDelay = 50; });
+    await page.keyboard.press("Escape");
+  });
+
+  await test("빈 응답은 '제안 없음'(실패로 세지 않음) · 설명이 섞인 응답은 이어질 말만", async () => {
+    const pg = await newPage(ctx);
+    await pg.evaluate(() => { window.__acResp = ""; window.__mockSample = async (t) => (t.includes("<before_cursor>") ? window.__acResp : "x"); });
+    await freshDoc(pg, projectId, [P("r1", BASE_TEXT)], "응답 시험");
+    await caretEnd(pg, 0);
+    for (const s of [" 가", "나", "다", "라"]) {
+      await pg.keyboard.type(s);
+      await pg.waitForFunction(() => document.querySelector("#tb-autocomplete-note").textContent === "제안 없음", null, { timeout: 4000 });
+    }
+    assert(!(await ghost(pg)), "제안 없음");
+    const cases = [
+      ["다음과 같이 이어집니다:\n\n자석의 낙하 속도가 감소하였다.", "자석의 낙하 속도가 감소하였다."],
+      ["자석의 낙하 속도가 감소하였다.\n\n(설명: 앞 문장을 이어 썼습니다)", "자석의 낙하 속도가 감소하였다."],
+      ["제안: “ 낙하 시간이 길어졌다.”", "낙하 시간이 길어졌다."],
+    ];
+    for (const [i, [resp, want]] of cases.entries()) {
+      await pg.evaluate((r) => { window.__acResp = r; }, resp);
+      await pg.keyboard.type(" 마" + i);
+      const g = await waitGhost(pg);
+      const t = (await g.textContent()).trim();
+      assert(t === want, "응답 정리: " + JSON.stringify(resp) + " → " + JSON.stringify(t));
+      await pg.keyboard.press("Escape");
+    }
+    await pg.close();
+  });
+
+  await test("AI 사용 동의 전: 자동 요청을 보내지 않고 'AI 허용 필요' + 허용하기 → 클릭으로 허용하면 바로 동작", async () => {
+    const pc = await newPage(ctx, "?consent=prompt");
+    await freshDoc(pc, projectId, [P("c1", BASE_TEXT)], "동의 시험");
+    await pc.waitForFunction(() => document.querySelector("#tb-autocomplete-note").textContent === "AI 허용 필요", null, { timeout: 4000 });
+    assert(await pc.isVisible("#tb-autocomplete-allow"), "허용하기 버튼");
+    assert(!(await pc.isDisabled("#tb-autocomplete")), "토글은 켤 수 있음");
+    await caretEnd(pc, 0);
+    await pc.keyboard.type(" 그리고");
+    await sleep(2600);
+    const before = await pc.evaluate(() => ({ attempts: window.__mockSampleAttempts || 0, asked: window.__mockConsentAsked || 0 }));
+    assert(before.attempts === 0 && before.asked === 0, "동의 전 요청·동의 창 없음 " + JSON.stringify(before));
+    assert(!(await ghost(pc)), "제안 없음");
+    await pc.click("#tb-autocomplete-allow");
+    await waitGhost(pc, 4000);
+    const after = await pc.evaluate(() => ({ asked: window.__mockConsentAsked || 0, note: document.querySelector("#tb-autocomplete-note").textContent, allowHidden: document.querySelector("#tb-autocomplete-allow").hidden }));
+    assert(after.asked === 1 && after.note === "" && after.allowHidden, "클릭에서 한 번 묻고 바로 제안 " + JSON.stringify(after));
+    await pc.keyboard.press("Escape");
+    await pc.keyboard.type(" 다음");
+    await waitGhost(pc, 4000);
+    assert((await pc.evaluate(() => window.__mockConsentAsked)) === 1, "다시 묻지 않음");
+    await pc.close();
+  });
+
+  await test("동의를 거절하면 다시 묻지 않고 'AI 허용 안 됨' + 권한 설정(관리 창에서 켜면 다시 동작)", async () => {
+    const pc = await newPage(ctx, "?consent=prompt");
+    await pc.evaluate(() => { window.__mockConsentAnswer = "deny"; });
+    await freshDoc(pc, projectId, [P("d1", BASE_TEXT)], "거절 시험");
+    await pc.waitForSelector("#tb-autocomplete-allow:not([hidden])");
+    await pc.click("#tb-autocomplete-allow");
+    await pc.waitForFunction(() => document.querySelector("#tb-autocomplete-note").textContent === "AI 허용 안 됨", null, { timeout: 4000 });
+    assert(await pc.isDisabled("#tb-autocomplete"), "토글 비활성");
+    assert((await pc.textContent("#tb-autocomplete-allow")) === "권한 설정", "권한 설정 버튼");
+    await caretEnd(pc, 0);
+    await pc.keyboard.type(" 그리고");
+    await pc.keyboard.press("Control+Space");
+    await sleep(2200);
+    const st = await pc.evaluate(() => ({ attempts: window.__mockSampleAttempts || 0, asked: window.__mockConsentAsked || 0 }));
+    assert(st.attempts === 0 && st.asked === 1, "거절 뒤 요청·재요청 없음 " + JSON.stringify(st));
+    await pc.evaluate(() => { window.__mockManageGrants = true; });
+    await pc.click("#tb-autocomplete-allow");
+    await pc.waitForFunction(() => !document.querySelector("#tb-autocomplete").disabled && document.querySelector("#tb-autocomplete-note").textContent === "", null, { timeout: 4000 });
+    assert((await pc.evaluate(() => window.__mockManageOpened)) === 1, "관리 창 한 번");
+    await caretEnd(pc, 0);
+    await pc.keyboard.type(" 다시");
+    await waitGhost(pc, 4000);
+    await pc.close();
+  });
+
+  await test("permissions가 없을 때: 예전처럼 요청하고, 거절(not_granted)이 오면 토글 옆과 알림으로 이유를 보여 준다", async () => {
+    const pc = await newPage(ctx, "?consent=prompt&nopermissions=1");
+    await pc.evaluate(() => { window.__mockConsentAnswer = "deny"; });
+    await freshDoc(pc, projectId, [P("e1", BASE_TEXT)], "권한 없음 시험");
+    assert((await noteText(pc)) === "", "처음에는 아무 표시 없음");
+    await caretEnd(pc, 0);
+    await pc.keyboard.type(" 그리고");
+    await pc.waitForFunction(() => document.querySelector("#tb-autocomplete-note").textContent === "AI 허용 안 됨", null, { timeout: 4000 });
+    assert(/허용되지 않아/.test(await pc.textContent("#rn-toast")), "알림: " + (await pc.textContent("#rn-toast")));
+    assert(await pc.isDisabled("#tb-autocomplete"), "토글 비활성");
+    assert(await pc.isHidden("#tb-autocomplete-allow"), "permissions가 없으면 권한 설정 버튼 없음");
+    await pc.keyboard.type(" 또");
+    await sleep(2200);
+    assert((await pc.evaluate(() => window.__mockSampleAttempts)) === 1, "한 번만 시도");
+    await pc.close();
   });
 
   await test("표 칸·캡션·제목에서는 뜨지 않는다", async () => {
