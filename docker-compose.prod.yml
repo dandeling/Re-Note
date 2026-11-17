@@ -1,0 +1,116 @@
+# 운영용: 서버 한 대에서 전체를 띄운다. 사용법은 docs/deploy.md, 실행은 scripts/deploy.sh.
+# 개발용 docker-compose.yml과 다른 점:
+#  - 밖으로 여는 포트는 Caddy의 80/443뿐이다(DB·Redis·MinIO 포트는 열지 않는다).
+#  - Caddy가 HTTPS 인증서를 자동으로 받고, 앱(DOMAIN)과 파일 저장소(s3.DOMAIN)를 내보낸다.
+#  - 비밀번호는 .env에서 읽는다(기본값 없음).
+services:
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?DOMAIN을 .env에 넣으세요}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on: [web, minio]
+    networks: [default]
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://researchmate:${POSTGRES_PASSWORD:?}@db:5432/researchmate
+      REDIS_URL: redis://redis:6379
+      S3_ENDPOINT: http://minio:9000
+      S3_PUBLIC_ENDPOINT: https://s3.${DOMAIN}
+      AUTH_URL: https://${DOMAIN}
+      AUTH_TEST_MODE: ""
+      AI_FAKE: ""
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks: [default, backend]
+
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: researchmate
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      POSTGRES_DB: researchmate
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U researchmate"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [backend]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [backend]
+
+  minio:
+    image: minio/minio
+    restart: unless-stopped
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:?}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:?}
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [default, backend]
+
+  worker:
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://researchmate:${POSTGRES_PASSWORD:?}@db:5432/researchmate
+      REDIS_URL: redis://redis:6379
+      S3_ENDPOINT: http://minio:9000
+      AUTH_TEST_MODE: ""
+      AI_FAKE: ""
+    depends_on:
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks: [backend]
+
+networks:
+  backend:
+    internal: true
+
+volumes:
+  db-data:
+  minio-data:
+  caddy-data:
+  caddy-config:

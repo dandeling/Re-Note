@@ -177,6 +177,8 @@ export E2E_DATABASE_URL=postgresql://researchmate:researchmate@localhost:5432/re
 
 ### A. 단일 VPS + docker compose
 
+**운영용 구성과 단계별 안내는 `docs/deploy.md`에 있습니다** (`docker-compose.prod.yml`, `Caddyfile`, `scripts/deploy.sh`). 아래는 개발용 compose를 직접 손볼 때의 요점입니다.
+
 1. 서버에 Docker와 Compose를 설치하고 저장소를 받습니다.
 2. `.env`에 운영 값을 넣습니다: `AUTH_SECRET`, `AUTH_URL`(외부 주소, Auth.js가 읽음), `EMAIL_SERVER`·`EMAIL_FROM`(또는 Google OAuth), `S3_*`, `S3_PUBLIC_ENDPOINT`(브라우저가 접근할 스토리지 주소), `ANTHROPIC_API_KEY`·`ANTHROPIC_MODEL`. `AUTH_TEST_MODE`·`AI_FAKE`는 비웁니다.
 3. `docker compose up -d --build` → `docker compose exec web pnpm db:deploy` (처음 한 번 `pnpm db:seed`).
