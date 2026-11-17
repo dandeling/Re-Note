@@ -13,14 +13,14 @@ const NAV = [
   { href: "/tools/convert", key: "convert" },
 ] as const;
 
-/** "Re;Note" → Re + 강조한 ; + Note (앱 이름에 ;가 없으면 그대로) */
+/** "Re: Note" → Re + 강조한 : + Note (앱 이름에 : 나 ;가 없으면 그대로) */
 function Brand() {
-  const i = appName.indexOf(";");
+  const i = appName.search(/[:;]/);
   if (i < 0) return <>{appName}</>;
   return (
     <>
       {appName.slice(0, i)}
-      <span className="text-primary">;</span>
+      <span className="text-primary">{appName[i]}</span>
       {appName.slice(i + 1)}
     </>
   );

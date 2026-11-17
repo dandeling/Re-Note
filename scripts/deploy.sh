@@ -17,7 +17,7 @@ AUTH_SECRET=$(rand 32)
 S3_BUCKET=renote
 S3_ACCESS_KEY=renote$(rand 6)
 S3_SECRET_KEY=$(rand 24)
-NEXT_PUBLIC_APP_NAME=Re;Note
+NEXT_PUBLIC_APP_NAME=Re: Note
 AI_DAILY_LIMIT_PER_USER=100
 MAX_UPLOAD_MB=50
 
@@ -33,7 +33,7 @@ EOF
   exit 0
 fi
 
-# .env는 셸 문법이 아닐 수 있으므로(예: Re;Note) 실행하지 않고 값만 읽는다.
+# .env는 셸 문법이 아닐 수 있으므로(예: Re: Note) 실행하지 않고 값만 읽는다.
 val() { sed -n "s/^$1=//p" .env | tail -1; }
 DOMAIN=$(val DOMAIN)
 if [ -z "$(val AUTH_GOOGLE_ID)" ] && [ -z "$(val EMAIL_SERVER)" ]; then

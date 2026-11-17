@@ -1,8 +1,8 @@
-# Re;Note
+# Re: Note
 
-**Re;Note**(읽기: 리놋)는 연구(탐구)를 하는 사람이 **겪은 고충을 공유하고**, **사이트 안의 선행 연구와 그 연구의 고충·한계·결과보고서를 찾아보고**, **보고서를 빠르게 작성**하도록 돕는 웹 서비스입니다.
+**Re: Note**(읽기: 리놋)는 연구(탐구)를 하는 사람이 **겪은 고충을 공유하고**, **사이트 안의 선행 연구와 그 연구의 고충·한계·결과보고서를 찾아보고**, **보고서를 빠르게 작성**하도록 돕는 웹 서비스입니다.
 
-- 화면에 보이는 서비스 이름은 환경변수 `NEXT_PUBLIC_APP_NAME`으로 바꿀 수 있습니다(기본값 `Re;Note`, `lib/messages.ts`). `NEXT_PUBLIC_` 변수는 빌드할 때 클라이언트 코드에 박히므로, 바꾼 뒤에는 다시 빌드해야 합니다.
+- 화면에 보이는 서비스 이름은 환경변수 `NEXT_PUBLIC_APP_NAME`으로 바꿀 수 있습니다(기본값 `Re: Note`, `lib/messages.ts`). `NEXT_PUBLIC_` 변수는 빌드할 때 클라이언트 코드에 박히므로, 바꾼 뒤에는 다시 빌드해야 합니다.
 - 저장소·패키지·DB 이름(`researchmate`)은 내부 식별자라 그대로 둡니다(`docs/decisions.md` #19).
 - 요구사항은 `SPEC.md`, 구현 중 내린 결정은 `docs/decisions.md`, HWP 변환 검증 결과는 `docs/hwp-spike.md`, 완료 기준별 근거는 `docs/acceptance.md`에 있습니다.
 
@@ -116,7 +116,7 @@ MVP에서 제외한 것(SPEC 3장): 실시간 공동 편집, 팀원 초대, HWP/
 | `RATE_LIMIT_AUTOCOMPLETE_PER_MINUTE` | 사용자별 분당 자동완성 요청 한도 | 선택 | `20` | `lib/ai/autocomplete.ts` |
 | `AI_AUTOCOMPLETE_DAILY_LIMIT` | 사용자별 하루 자동완성 요청 한도(한국 시간 0시 기준, 프로세스 메모리로 셈) | 선택 | `300` | `lib/ai/autocomplete.ts` |
 | `MAX_UPLOAD_MB` | 업로드 최대 크기(MB) | 선택 | `50` | `lib/files/types.ts`, `server/upload-form.ts` |
-| `NEXT_PUBLIC_APP_NAME` | 화면에 보이는 서비스 이름(빌드 시 반영) | 선택 | `Re;Note` | `lib/messages.ts` |
+| `NEXT_PUBLIC_APP_NAME` | 화면에 보이는 서비스 이름(빌드 시 반영) | 선택 | `Re: Note` | `lib/messages.ts` |
 | `AUTH_TEST_MODE` | `1`이면 이메일만으로 로그인하는 테스트 로그인 활성화. **운영 금지** | 선택 | 꺼짐 | `server/auth-providers.ts` |
 | `TEST_DATABASE_URL` | 통합 테스트(Vitest) 전용 DB | 테스트 | `postgresql://researchmate:researchmate@localhost:5432/researchmate_test` | `tests/setup/env.ts` |
 | `AI_FAKE` | `1`이면 실제 AI 대신 정해진 가짜 응답. `NODE_ENV=production`에서는 무시. **운영 금지** | 테스트 | 꺼짐 | `lib/ai/client.ts`, `lib/ai/fake.ts` |

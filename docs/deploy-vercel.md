@@ -1,6 +1,6 @@
 # Vercel + Supabase로 무료 배포하기
 
-Re;Note를 **Vercel**(웹사이트)과 **Supabase**(데이터베이스 + 파일 저장소)에 올리는 방법입니다. 서버를 직접 빌리지 않아도 되고, 두 서비스의 무료 요금제로 시작할 수 있습니다.
+Re: Note를 **Vercel**(웹사이트)과 **Supabase**(데이터베이스 + 파일 저장소)에 올리는 방법입니다. 서버를 직접 빌리지 않아도 되고, 두 서비스의 무료 요금제로 시작할 수 있습니다.
 
 > 검증 범위: 코드 쪽(기능 끄기, 빌드 스크립트, 설정)은 이 저장소에서 확인했지만, **실제 Supabase·Vercel에 배포해 보지는 못했습니다.** 화면의 메뉴 이름은 서비스가 바뀌면서 조금씩 달라질 수 있습니다. 비슷한 이름의 메뉴를 찾아 주세요.
 
@@ -36,7 +36,7 @@ Re;Note를 **Vercel**(웹사이트)과 **Supabase**(데이터베이스 + 파일 
 
 ## 2. 데이터베이스 확장 (보통은 할 일 없음)
 
-Re;Note는 검색에 `pg_trgm`과 `vector` 확장을 씁니다. **배포할 때 마이그레이션이 이 둘을 자동으로 켭니다**(`CREATE EXTENSION IF NOT EXISTS`). 그래서 보통은 손댈 것이 없습니다.
+Re: Note는 검색에 `pg_trgm`과 `vector` 확장을 씁니다. **배포할 때 마이그레이션이 이 둘을 자동으로 켭니다**(`CREATE EXTENSION IF NOT EXISTS`). 그래서 보통은 손댈 것이 없습니다.
 
 나중에 Vercel 빌드 로그에 `extension "vector"` 또는 `pg_trgm` 관련 권한 오류가 보이면 그때만:
 
@@ -111,7 +111,7 @@ Supabase 프로젝트 화면 위쪽의 **Connect** 버튼을 누릅니다. 여�
 
 메일 발송 서비스(SMTP)가 있어야 합니다.
 - `EMAIL_SERVER`: 예) `smtp://사용자이름:비밀번호@smtp.example.com:587`
-- `EMAIL_FROM`: 보내는 사람 주소, 예) `Re;Note <no-reply@example.com>`
+- `EMAIL_FROM`: 보내는 사람 주소, 예) `Re: Note <no-reply@example.com>`
 
 비워 두면 메일 로그인은 꺼집니다.
 
@@ -147,7 +147,7 @@ Supabase 프로젝트 화면 위쪽의 **Connect** 버튼을 누릅니다. 여�
 | `S3_SECRET_KEY` | 4-2단계의 Secret access key | 필수 |
 | `ANTHROPIC_API_KEY` | Anthropic 콘솔에서 만든 API 키 | AI 기능 쓸 때 |
 | `ANTHROPIC_MODEL` | 사용할 Claude 모델 이름 (Anthropic 문서의 모델 목록 참고) | AI 기능 쓸 때 |
-| `NEXT_PUBLIC_APP_NAME` | `Re;Note` | 선택 (바꾸면 다시 배포해야 반영) |
+| `NEXT_PUBLIC_APP_NAME` | `Re: Note` | 선택 (바꾸면 다시 배포해야 반영) |
 
 **넣지 말아야 할 것**
 
